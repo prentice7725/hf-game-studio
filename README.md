@@ -151,6 +151,8 @@ hyperfusion이 설치되어 있으면 실제 hyperfusion 검증(brief 계약, �
 HF_SKILL=~/.claude/skills/hyperfusion npm test
 ```
 
+CI(`.github/workflows/test.yml`)는 main 푸시와 PR마다 최신 hyperfusion을 받아 위 명령과 같은 방식으로 돌립니다. hyperfusion이 바뀌어 이 레이어가 깨지면 여기서 드러납니다.
+
 ## 라이선스
 
 MIT. 역할 지시문과 검토 스킬의 출처는 [NOTICE.md](NOTICE.md)에 있습니다.
