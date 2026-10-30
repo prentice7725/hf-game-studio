@@ -84,12 +84,14 @@ node ~/.claude/skills/hyperfusion/scripts/setup-doctor.mjs <게임 저장소> --
 4. **작업마다 게임 brief 작성 → 컴파일 → hyperfusion 실행.**
 
 ```bash
-HF_SKILL=~/.claude/skills/hyperfusion node ~/.claude/skills/hf-game-studio/scripts/brief.mjs merc-data.json --repo . --out BRIEF.json
+BRIEF=$(HF_SKILL=~/.claude/skills/hyperfusion node ~/.claude/skills/hf-game-studio/scripts/brief.mjs merc-data.json --repo .)
 ```
 
 ```bash
-node ~/.claude/skills/hyperfusion/scripts/fusion-state.mjs init . BRIEF.json
+node ~/.claude/skills/hyperfusion/scripts/fusion-state.mjs init . "$BRIEF"
 ```
+
+컴파일된 brief는 기본으로 **저장소 밖** 임시 폴더(`<tmp>/hfgs-briefs/<task_id>.json`, `HFGS_BRIEF_DIR`로 변경)에 쓰고 그 경로만 출력합니다. 저장소 안에 쓰면 추적되지 않는 파일이 hyperfusion의 변경 목록에 섞이기 때문입니다. `--out`으로 위치를 정할 수 있고(저장소 안이면 경고), `--stdout`이면 JSON을 그대로 출력합니다.
 
 `HF_SKILL`을 주면 컴파일 결과가 설치된 hyperfusion의 brief 검증까지 통과하는지 확인합니다.
 
@@ -115,16 +117,41 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 | `role` | 역할 덮어쓰기. `null`이면 역할 지시문을 넣지 않음 |
 | `context_docs` | 일꾼이 먼저 읽을 단일 원본 문서. 기본은 `design/` 네 문서 중 있는 것 |
 | `schema`, `data_files` | 데이터 스키마 검사. `data_files`를 생략하면 `scope.paths`의 `.json` |
+| `expect` | 바뀌어야 할 값. `{"/mercenaries/[id=ash]/hire_cost": 120}`처럼 경로와 JSON 값. `[키=값]`은 그 필드가 같은 원소를 고름 |
 | `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 `.png` |
-| `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `expect_text`, `name`(선택) |
+| `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `serve`, `expect_text`, `name`(선택). 로컬 서버 주소면 `serve`(서버 실행 명령) 필수 |
 | `acceptance_map`의 `"@auto"` | 자동으로 만든 수용 명령 전부 |
 
 컴파일러가 하는 일:
 
 - `game_kind`를 hyperfusion `task_kind`(와 기본 난이도)로 바꿉니다.
 - 종류별 제약, 역할 지시문, 단일 원본 문서 안내를 `constraints`에 넣습니다. 일꾼 간 통신 언어가 영어라 지시문은 영어입니다.
-- `schema`, `assets_manifest`, `screenshot`으로 `acceptance_commands`를 만듭니다. 새 파일을 만드는 작업이면 시작 전에는 실패하므로 hyperfusion의 red-first 조건을 자연히 만족합니다.
+- `schema`(+ `expect`), `assets_manifest`, `screenshot`으로 `acceptance_commands`를 만듭니다.
+- 이미 있는 파일을 형식 검사만으로 고치는 작업이면 경고합니다(아래 red-first).
 - 검사 기준 파일(`schema`, `assets_manifest`)이 `scope.paths`에 있으면 거절합니다. 일꾼이 기준을 느슨하게 고쳐 통과하는 것을 막기 위해서입니다.
+
+### red-first: 이미 있는 파일을 고치는 작업
+
+hyperfusion은 일꾼이 손대기 전에 수용 검사를 한 번 돌려 **실패하는지** 확인하고, 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 작업을 시작하지 않습니다. 맞는 결과와 엉터리 결과를 가르지 못하는 검사이기 때문입니다.
+
+- 새 파일을 만드는 작업은 파일이 없어 검사가 실패하므로 그대로 됩니다.
+- 이미 있는 데이터를 고치는 작업은 스키마 검사가 처음부터 통과합니다. `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다.
+
+```json
+"expect": {"/mercenaries/[id=ash]/hire_cost": 120}
+```
+
+- 이미 있는 이미지를 다시 만드는 작업은 매니페스트 검사가 처음부터 통과합니다. 크기를 바꾸는 경우가 아니면 다른 검사를 `acceptance_commands`에 넣거나, hyperfusion의 `acceptance_baseline_green`에 이유를 적습니다.
+
+### UI 스크린샷과 개발 서버
+
+hyperfusion은 일꾼 프로세스가 **모두 끝난 뒤에** 수용 검사를 돌립니다. 일꾼이 띄운 개발 서버는 그때 이미 꺼져 있습니다(남아 있으면 종료 확인에서 막힙니다). 그래서 서버 주소를 찍을 때는 `serve`에 서버 실행 명령을 적어 검사 도구가 직접 띄우게 합니다.
+
+```json
+"screenshot": {"serve": "npm run dev", "url": "http://localhost:5173", "selector": "#contract-board", "expect_text": "곡물 수레 호위"}
+```
+
+검사 도구는 서버를 띄우고, 주소가 응답할 때까지 기다렸다가(기본 60초) 찍은 뒤 서버를 자식·손자 프로세스까지 종료합니다. 빌드 결과물을 바로 열 수 있으면 `"file": "dist/index.html"`이 더 단순합니다.
 
 ## 게이트와 프로세스
 
@@ -137,7 +164,7 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 - **Antigravity 모델 고정.** 프리셋은 `executors.antigravity.model`을 `gemini-4-argon`(+ `reasoning_effort: high` → `gemini-4-argon-high`)으로 둡니다. 설치된 `agy`가 `--model`을 지원하지 않거나 `agy models`에 그 모델이 없으면 hyperfusion이 Antigravity를 미설치로 보고 건너뜁니다. setup-doctor로 확인하세요.
 - **오디오 생성 일꾼은 없습니다.** 오디오는 사양서(gdd)로만 다룹니다.
 - **스팀 출시.** AI 생성 콘텐츠 공개 의무와 각 생성 서비스의 상업적 이용 조건을 확인하세요(`design/art-bible.md`에 기록란이 있습니다).
-- **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 저장소 안에 쓰면 hyperfusion이 트리 변경으로 봅니다. 개발 서버(`--url`)를 쓰는 경우 서버를 띄우는 방법은 brief의 constraints나 별도 수용 명령으로 정합니다.
+- **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 저장소 안에 쓰면 hyperfusion이 트리 변경으로 봅니다. 서버 종료는 Linux·macOS에서 프로세스 그룹 단위로 테스트했고, Windows(`taskkill /T`)는 테스트하지 않았습니다.
 
 ## 테스트
 

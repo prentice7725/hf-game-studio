@@ -16,9 +16,9 @@ description: HyperFusion 위에 올린 게임 개발 레이어. 게임 작업(GD
 
 ## 작업마다
 
-1. **게임 brief 작성.** `game_kind`를 고른다(아래 표). hyperfusion brief 필드(`task_id`, `objective`, `scope.paths`, `success_criteria`, `acceptance_map` 등)에 게임 필드(`schema`, `assets_manifest`, `screenshot`, `role`, `context_docs`)를 더한 형식이다. 예시는 `$HFGS/examples/briefs/`.
-2. **컴파일.** `node $HFGS/scripts/brief.mjs GAME-BRIEF.json --repo $HF_REPO --out BRIEF.json`. 역할 지시문과 단일 원본 문서 안내가 `constraints`에, 게임용 수용 검사가 `acceptance_commands`에 들어간다. `HF_SKILL`이 설정되어 있으면 hyperfusion 자체 brief 검증도 돌린다. 경고(문서 없음, 수용 명령 없음)는 사용자에게 알린다.
-3. **실행.** 이후는 hyperfusion 절차 그대로: `fusion-state.mjs init $HF_REPO BRIEF.json` → begin → … → CLOSE.
+1. **게임 brief 작성.** `game_kind`를 고른다(아래 표). hyperfusion brief 필드(`task_id`, `objective`, `scope.paths`, `success_criteria`, `acceptance_map` 등)에 게임 필드(`schema`, `expect`, `assets_manifest`, `screenshot`, `role`, `context_docs`)를 더한 형식이다. 예시는 `$HFGS/examples/briefs/`.
+2. **컴파일.** `BRIEF=$(node $HFGS/scripts/brief.mjs GAME-BRIEF.json --repo $HF_REPO)`. 컴파일된 brief는 저장소 밖 임시 폴더에 쓰이고 경로만 출력된다(저장소 안에 쓰지 않는다). 역할 지시문과 단일 원본 문서 안내가 `constraints`에, 게임용 수용 검사가 `acceptance_commands`에 들어간다. `HF_SKILL`이 설정되어 있으면 hyperfusion 자체 brief 검증도 돌린다. 경고(문서 없음, 수용 명령 없음, red-first)는 사용자에게 알린다.
+3. **실행.** 이후는 hyperfusion 절차 그대로: `fusion-state.mjs init $HF_REPO "$BRIEF"` → begin → … → CLOSE.
 
 ## game_kind
 
@@ -37,6 +37,9 @@ description: HyperFusion 위에 올린 게임 개발 레이어. 게임 작업(GD
 hyperfusion의 task_kind는 6종으로 고정이라 지표(실적)는 task_kind 단위로 쌓인다. 예를 들어 gdd·narrative·lore는 모두 docs 실적으로 합쳐진다.
 
 ## 규칙
+
+- **이미 있는 파일을 고칠 때는 `expect`.** 형식 검사는 처음부터 통과해 hyperfusion이 `ACCEPTANCE_ALREADY_GREEN`으로 거절한다. 데이터는 `expect`에 바뀔 값을 적고, 이미지는 바뀐 점을 확인하는 검사를 따로 넣는다.
+- **로컬 서버 스크린샷은 `serve`.** 수용 검사는 일꾼 프로세스가 끝난 뒤 돌기 때문에 일꾼이 띄운 서버에 기대면 항상 실패한다. 서버 실행 명령을 `screenshot.serve`에 적어 검사 도구가 띄우고 종료하게 한다(없으면 컴파일러가 거절).
 
 - **검사 기준은 범위 밖에.** `schema`, `assets_manifest`는 `scope.paths`에 넣을 수 없다(컴파일러가 거절). 일꾼이 기준을 느슨하게 고쳐 통과하는 길을 막는다.
 - **이미지는 사람 승인까지.** 매니페스트 검사는 크기·투명도·용량만 본다. 화풍 일관성은 리드 리뷰와 사용자 승인으로 본다. 승인 전 애셋은 아틀라스에 넣지 않는다.

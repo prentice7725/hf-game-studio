@@ -5,9 +5,12 @@
 // 역할 지시문·단일 원본 문서·게임용 수용 검사를 brief의 표준 필드(constraints, acceptance_commands)에 채운다.
 // hyperfusion 코드는 건드리지 않는다.
 //
-// 사용법: node scripts/brief.mjs <게임-brief.json> [--repo <게임 저장소>] [--out <파일>]
+// 사용법: node scripts/brief.mjs <게임-brief.json> [--repo <게임 저장소>] [--out <파일> | --stdout]
+// 기본 출력은 저장소 밖 임시 폴더(<tmp>/hfgs-briefs/<task_id>.json, HFGS_BRIEF_DIR로 변경)이고 그 경로를 출력한다.
+// 저장소 안에 쓰면 추적되지 않는 파일이 생겨 hyperfusion의 변경 목록에 섞인다.
 // HF_SKILL이 설정되어 있으면 hyperfusion의 brief 검증(contracts.mjs)까지 통과하는지 확인한다.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
@@ -41,7 +44,11 @@ export function autoAcceptance(input,kind){
  if(kind.verify==='schema'&&input.schema){
   const files=input.data_files??paths.filter(p=>p.endsWith('.json'));
   if(!files.length)fail('schema 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
-  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files].map(quote).join(' '));
+  const expects=Object.entries(input.expect??{}).map(([p,v])=>{
+   if(!p.startsWith('/'))fail(`expect의 경로는 /로 시작해야 함: ${p}`);
+   return ['--expect',`${p}=${JSON.stringify(v)}`];
+  });
+  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expects.flat()].map(quote).join(' '));
  }
  if(kind.verify==='assets'&&input.assets_manifest){
   const files=input.asset_files??paths.filter(p=>p.toLowerCase().endsWith('.png'));
@@ -52,6 +59,13 @@ export function autoAcceptance(input,kind){
   const target=['url','file','electron'].filter(k=>s[k]!==undefined);
   if(target.length!==1)fail('screenshot에는 url, file, electron 중 하나만 적을 것');
   if(!str(s.selector))fail('screenshot.selector 필요');
+  // 일꾼이 띄운 서버는 수용 검사 때 이미 꺼져 있다. 서버 주소를 찍으려면 검사 도구가 직접 띄우게 serve를 적는다.
+  if(s.serve!==undefined){
+   if(!str(s.serve))fail('screenshot.serve는 서버를 띄우는 명령(예: "npm run dev")');
+   if(!s.url)fail('screenshot.serve에는 url이 필요');
+   args.push('--serve',s.serve);
+  }else if(s.url&&/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$)/.test(s.url))
+   fail('screenshot.url이 로컬 서버인데 serve가 없음: hyperfusion은 일꾼 프로세스가 끝난 뒤 수용 검사를 돌리므로 서버를 띄우는 명령을 serve에 적을 것');
   args.push(`--${target[0]}`,s[target[0]],'--selector',s.selector);
   if(s.expect_text)args.push('--expect-text',s.expect_text);
   args.push('--name',s.name??input.task_id);
@@ -90,6 +104,15 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  ];
 
  const auto=autoAcceptance(input,kind);
+ // red-first: hyperfusion은 시작 전 수용 검사가 모두 통과하면 ACCEPTANCE_ALREADY_GREEN으로 거절한다.
+ // 이미 있는 파일을 고치는 작업에서 형식 검사만 있으면 처음부터 통과하므로 미리 알린다.
+ if(auto.length&&!input.acceptance_commands?.length&&input.acceptance_baseline_green===undefined){
+  const checked=kind.verify==='schema'&&!input.expect?(input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')))
+   :kind.verify==='assets'?(input.asset_files??input.scope.paths.filter(p=>p.toLowerCase().endsWith('.png'))):[];
+  const existing=checked.filter(f=>fs.existsSync(path.join(repo,f)));
+  if(existing.length)warn(`이미 있는 파일(${existing.join(', ')})은 형식 검사가 처음부터 통과해 hyperfusion이 ACCEPTANCE_ALREADY_GREEN으로 거절할 수 있음: `
+   +(kind.verify==='schema'?'expect에 바뀔 값을 적거나 ':'')+'바뀐 내용을 확인하는 검사를 acceptance_commands에 넣을 것');
+ }
  const commands=[...new Set([...(input.acceptance_commands??[]),...auto])];
  if(commands.length>10)fail('acceptance_commands는 10개까지');
  if(!commands.length)warn('수용 명령이 없음: 일꾼의 보고만으로 판정하게 된다. 가능하면 schema·assets_manifest·screenshot을 적을 것');
@@ -130,22 +153,35 @@ export async function checkWithHyperfusion(brief,skill=process.env.HF_SKILL){
  return true;
 }
 
+export const defaultOut=taskId=>path.join(process.env.HFGS_BRIEF_DIR??path.join(os.tmpdir(),'hfgs-briefs'),`${taskId}.json`);
+
+export function insideRepo(file,repo){
+ const rel=path.relative(path.resolve(repo),path.resolve(file));
+ return rel===''||(!rel.startsWith('..')&&!path.isAbsolute(rel));
+}
+
 async function main(){
  const args=process.argv.slice(2);
- let file,repo=process.cwd(),outFile;
+ let file,repo=process.cwd(),outFile,toStdout=false;
  for(let i=0;i<args.length;i++){
   if(args[i]==='--repo')repo=args[++i];
   else if(args[i]==='--out')outFile=args[++i];
+  else if(args[i]==='--stdout')toStdout=true;
   else if(!file)file=args[i];
   else fail(`알 수 없는 인자: ${args[i]}`);
  }
- if(!file)fail('사용법: brief.mjs <게임-brief.json> [--repo DIR] [--out FILE]');
+ if(!file)fail('사용법: brief.mjs <게임-brief.json> [--repo DIR] [--out FILE | --stdout]');
  const input=JSON.parse(fs.readFileSync(file,'utf8'));
  const brief=compile(input,{repo,warn:m=>console.error('경고: '+m)});
  if(await checkWithHyperfusion(brief))console.error('hyperfusion brief 검증 통과');
  const text=JSON.stringify(brief,null,2)+'\n';
- if(outFile){fs.writeFileSync(outFile,text);console.error(`작성: ${outFile}`);}
- else process.stdout.write(text);
+ if(toStdout){process.stdout.write(text);return;}
+ outFile??=defaultOut(brief.task_id);
+ if(insideRepo(outFile,repo))console.error(`경고: ${outFile}은 게임 저장소 안이라 추적되지 않는 파일로 남음. 저장소 밖에 쓰는 것을 권함`);
+ fs.mkdirSync(path.dirname(outFile),{recursive:true});
+ fs.writeFileSync(outFile,text);
+ // 경로만 표준 출력으로 내보내 init에 바로 넘길 수 있게 한다: init . "$(node brief.mjs x.json --repo .)"
+ console.log(outFile);
 }
 
 if(import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(e=>{console.error('오류: '+e.message);process.exit(1);});
