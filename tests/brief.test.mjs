@@ -14,6 +14,8 @@ function repoWithDocs(){
  fs.mkdirSync(path.join(dir,'design'));
  fs.writeFileSync(path.join(dir,'design','glossary.md'),'# 용어집\n');
  fs.copyFileSync(path.join(STUDIO_ROOT,'templates','design','gdd.md'),path.join(dir,'design','gdd.md'));
+ fs.mkdirSync(path.join(dir,'design','refs'));
+ fs.writeFileSync(path.join(dir,'design','refs','merc.png'),'');
  return dir;
 }
 
@@ -48,7 +50,7 @@ test('image-asset + asset_pipeline: MCP 생성 지시문과 Luna 배치 경고',
  const warnings=[],b=compile(example('merc-portrait-pipeline.json'),{repo:repoWithDocs(),warn:m=>warnings.push(m)});
  assert.equal(b.task_kind,'image-asset');
  assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
- const ctx=pipelineDirectives({project_id:'merc-guild',output_class:'NONPIXEL_IMAGE'},['NONPIXEL_IMAGE']);
+ const ctx=pipelineDirectives({project_id:'merc-guild',output_class:'NONPIXEL_IMAGE'},{classes:['NONPIXEL_IMAGE']});
  for(const d of ctx)assert.ok(b.constraints.includes(d));
  assert.ok(b.constraints.some(c=>c.includes('project_id "merc-guild", requested_output_type "NONPIXEL_IMAGE"')));
  assert.ok(warnings.some(w=>w.includes(`--executor ${PIPELINE_EXECUTOR}`)));
@@ -59,7 +61,7 @@ test('image-asset + asset_pipeline: MCP 생성 지시문과 Luna 배치 경고',
 });
 
 test('asset_pipeline 폴링: STARTING과 RUNNING을 모두 기다리고 세션을 열어 둔다',()=>{
- const poll=pipelineDirectives({project_id:'a',output_class:'NONPIXEL_IMAGE'},['NONPIXEL_IMAGE']).find(d=>d.includes('asset_inspect_run until'));
+ const poll=pipelineDirectives({project_id:'a',output_class:'NONPIXEL_IMAGE'},{classes:['NONPIXEL_IMAGE']}).find(d=>d.includes('asset_inspect_run until'));
  assert.match(poll,/no longer STARTING or RUNNING/);
  assert.match(poll,/Keep this session open/);
 });
@@ -75,6 +77,8 @@ test('sfx: asset_pipeline 필수, WAV 매니페스트 검사, 길이 전달',()=
  assert.ok(warnings.some(w=>w.includes(`--executor ${PIPELINE_EXECUTOR}`)));
  const {asset_pipeline,...without}=example('sword-swing-sfx.json');
  assert.throws(()=>compile(without,{repo:repoWithDocs()}),/sfx 작업은 asset_pipeline이 필요함/);
+ const sp=example('sword-swing-sfx.json');
+ assert.throws(()=>compile({...sp,asset_pipeline:{...sp.asset_pipeline,workflow_id:'codex_imagegen',reference_image:'design/refs/merc.png'}},{repo:repoWithDocs()}),/이미지 작업에만/);
 });
 
 test('asset_pipeline: 종류별 output_class만 허용하고 PIXEL_STATIC은 경고',()=>{
@@ -98,6 +102,21 @@ test('asset_pipeline: 쓸 수 없는 작업, 잘못된 project_id, 모르는 필
  assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a'}},{repo:repoWithDocs()}),/output_class/);
  assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',...ok,provider:'grok'}},{repo:repoWithDocs()}),/알 수 없는 필드: provider/);
  assert.throws(()=>compile({...g,asset_pipeline:'merc-guild'},{repo:repoWithDocs()}),/형식/);
+});
+
+test('asset_pipeline: 참조 편집은 workflow_id를 명시하고 참조 이미지를 절대 경로로 넘긴다',()=>{
+ const repo=repoWithDocs(),b=compile(example('merc-portrait-variant.json'),{repo});
+ assert.ok(b.constraints.some(c=>c.includes('"id": "codex_imagegen", "allow_experimental": true')));
+ assert.ok(b.constraints.some(c=>c.includes(`reference_image "${path.join(repo,'design','refs','merc.png')}"`)));
+ const g=example('merc-portrait-variant.json');
+ const ap=g.asset_pipeline;
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,workflow_id:undefined}},{repo}),/workflow_id가 필요/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,reference_image:'design/refs/none.png'}},{repo}),/reference_image가 없음/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,reference_image:path.join(repo,'design','refs','merc.png')}},{repo}),/상대 경로/);
+ assert.throws(()=>compile({...g,scope:{paths:[...g.scope.paths,ap.reference_image]}},{repo}),/범위 밖에 둘 것/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,workflow_id:'Codex ImageGen'}},{repo}),/워크플로 ID/);
+ const plain=compile(example('merc-portrait-pipeline.json'),{repo});
+ assert.ok(!plain.constraints.some(c=>c.includes('allow_experimental')),'workflow_id가 없으면 자동 라우팅 그대로');
 });
 
 test('ui: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싼다',()=>{

@@ -88,11 +88,13 @@ const str=v=>typeof v==='string'&&v.trim().length>0;
 // 그 서버를 쓸 수 있는 일꾼은 Codex 설정(~/.codex/config.toml)에 asset_pipeline이 등록된 Luna뿐이다.
 // Claude 일꾼은 hyperfusion이 mcp__*를 막고, Grok·Antigravity에는 등록되어 있지 않다.
 // output_class는 asset-pipeline의 출력 종류다. 어떤 종류를 쓸 수 있는지는 game_kind의 pipeline.output_classes가 정한다.
+// ComfyUI 워크플로는 모두 text-to-image라 참조 이미지 편집은 Codex·Grok CLI provider(codex_imagegen, grok_imagine)로만 된다.
+// 이 provider들은 실험적이고 자동 선택되지 않으므로 workflow_id로 명시한다.
 export const PIPELINE_EXECUTOR='luna';
-const PIPELINE_FIELDS=['project_id','output_class','duration_seconds'];
+const PIPELINE_FIELDS=['project_id','output_class','duration_seconds','workflow_id','reference_image'];
 // asset_generate 직후 상태는 STARTING이고, 생성 중에는 RUNNING이다. 둘 다 끝난 상태가 아니다.
 const PIPELINE_PENDING=['STARTING','RUNNING'];
-export function pipelineDirectives(p,classes){
+export function pipelineDirectives(p,{classes=[],repo=process.cwd(),scope=[]}={}){
  if(!p||typeof p!=='object'||Array.isArray(p))fail('asset_pipeline은 {"project_id": "...", "output_class": "..."} 형식');
  const unknown=Object.keys(p).filter(k=>!PIPELINE_FIELDS.includes(k));
  if(unknown.length)fail(`asset_pipeline에 알 수 없는 필드: ${unknown.join(', ')}`);
@@ -103,12 +105,25 @@ export function pipelineDirectives(p,classes){
   if(!sfx)fail('asset_pipeline.duration_seconds는 SFX에만 쓸 수 있음');
   if(typeof p.duration_seconds!=='number'||!(p.duration_seconds>0))fail('asset_pipeline.duration_seconds는 0보다 큰 초 단위 숫자');
  }
+ if(p.workflow_id!==undefined&&!/^[a-z0-9][a-z0-9_]{0,63}$/.test(p.workflow_id))fail('asset_pipeline.workflow_id는 소문자·숫자·_로 된 워크플로 ID(예: codex_imagegen, grok_imagine)');
+ let ref;
+ if(p.reference_image!==undefined){
+  if(sfx)fail('asset_pipeline.reference_image는 이미지 작업에만 쓸 수 있음');
+  if(!str(p.reference_image)||path.isAbsolute(p.reference_image))fail('asset_pipeline.reference_image는 게임 저장소 기준 상대 경로');
+  if(!p.workflow_id)fail('asset_pipeline.reference_image에는 workflow_id가 필요: 참조 편집은 codex_imagegen·grok_imagine 같은 CLI provider로만 된다');
+  // 일꾼이 참조 이미지를 바꿔치기하지 못하게 범위 밖에 둔다.
+  if(scope.includes(p.reference_image))fail(`asset_pipeline.reference_image(${p.reference_image})가 scope.paths에 있음: 참조는 범위 밖에 둘 것`);
+  ref=path.resolve(repo,p.reference_image);
+  if(!fs.existsSync(ref))fail(`asset_pipeline.reference_image가 없음: ${p.reference_image}`);
+ }
  const args=[`project_id "${p.project_id}"`,`requested_output_type "${p.output_class}"`,
   ...(p.duration_seconds!==undefined?[`duration_seconds ${p.duration_seconds}`]:[]),
   'reference images and design docs as absolute paths'];
  const noun=sfx?'sound effects':'images';
  return [
   `Generate ${noun} only through the asset_pipeline MCP tools: asset_build_brief (${args.join(', ')}) → asset_route → asset_generate → asset_inspect_run. Never ${sfx?'synthesize, record, download or edit audio':'draw, synthesize, download or edit images'} by any other means.`,
+  ...(p.workflow_id?[`Use workflow "${p.workflow_id}" only: pass workflow_id "${p.workflow_id}" to asset_build_brief, then set workflow_preferences {"id": "${p.workflow_id}", "allow_experimental": true} in the returned brief before asset_route and asset_generate.`]:[]),
+  ...(ref?[`Edit from this reference image: pass reference_image "${ref}" to asset_build_brief. Keep the character's identity, silhouette, palette and outfit from it; change only what the objective asks.`]:[]),
   'Call asset_generate once per asset. Do not retry, change provider or workflow, or work around a BLOCKED, UNAVAILABLE or FAILED result: stop and return needs_decision with the tool status and error_code.',
   `Keep this session open and poll asset_inspect_run until its status is no longer ${PIPELINE_PENDING.join(' or ')}; a run left pending when your session ends never completes. Then copy the produced ${sfx?'PCM WAV':'image'} to its manifest path. Only ${sfx?'convert format':'resize or convert format'} to meet the manifest; do not ${sfx?'re-edit':'repaint'} it.`,
   'List every run_id with its final status and review state in remaining_risks. Pipeline output stays a candidate (REVIEW_REQUIRED, game_ready=false) until a human approves it; never claim approval.'
@@ -175,7 +190,7 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
    const ok=Object.entries(table.kinds).filter(([,k])=>k.pipeline).map(([n])=>n);
    fail(`asset_pipeline은 ${ok.join('·')} 작업에만 쓸 수 있음: ${input.game_kind}`);
   }
-  pipeline=pipelineDirectives(input.asset_pipeline,kind.pipeline.output_classes);
+  pipeline=pipelineDirectives(input.asset_pipeline,{classes:kind.pipeline.output_classes,repo,scope:input.scope.paths});
   warn(`asset_pipeline 작업은 asset_pipeline MCP가 등록된 Codex 일꾼만 할 수 있음: fusion-state.mjs init <저장소> <brief> --executor ${PIPELINE_EXECUTOR}`);
   // asset-pipeline의 PIXEL_STATIC은 자동 후처리가 투명화뿐이라, 색 수가 한도(기본 32)를 넘는 생성물은 Pixel Gate에서 FAILED가 된다.
   if(input.asset_pipeline.output_class==='PIXEL_STATIC')
