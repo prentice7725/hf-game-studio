@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {compile,loadKinds,roleDirectives,quote,checkWithHyperfusion,insideRepo,defaultOut,sections,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/brief.mjs';
+import {compile,pipelineDirectives,PIPELINE_EXECUTOR,loadKinds,roleDirectives,quote,checkWithHyperfusion,insideRepo,defaultOut,sections,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/brief.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','briefs',name)));
 const HF_KINDS=['code','ui','image-asset','tests','refactor','docs'];
@@ -42,6 +42,27 @@ test('image-asset: 매니페스트 검사는 파일별 --only',()=>{
  const b=compile(example('merc-portrait.json'),{repo:repoWithDocs()});
  assert.equal(b.task_kind,'image-asset');
  assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
+});
+
+test('image-asset + asset_pipeline: MCP 생성 지시문과 Luna 배치 경고',()=>{
+ const warnings=[],b=compile(example('merc-portrait-pipeline.json'),{repo:repoWithDocs(),warn:m=>warnings.push(m)});
+ assert.equal(b.task_kind,'image-asset');
+ assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
+ for(const d of pipelineDirectives({project_id:'merc-guild'}))assert.ok(b.constraints.includes(d));
+ assert.ok(b.constraints.some(c=>c.includes('project_id "merc-guild"')));
+ assert.ok(warnings.some(w=>w.includes(`--executor ${PIPELINE_EXECUTOR}`)));
+ assert.ok(!('asset_pipeline' in b),'게임 전용 필드는 hyperfusion brief에 남기지 않는다');
+ const plain=compile(example('merc-portrait.json'),{repo:repoWithDocs()});
+ assert.ok(!plain.constraints.some(c=>c.includes('asset_pipeline')),'필드가 없으면 기존 흐름 그대로');
+});
+
+test('asset_pipeline: image-asset 밖, 잘못된 project_id, 모르는 필드는 거절',()=>{
+ const g=example('merc-portrait-pipeline.json');
+ assert.throws(()=>compile({...example('merc-data.json'),asset_pipeline:{project_id:'a'}},{repo:repoWithDocs()}),/image-asset 작업에만/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'../x'}},{repo:repoWithDocs()}),/project_id/);
+ assert.throws(()=>compile({...g,asset_pipeline:{}},{repo:repoWithDocs()}),/project_id/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',provider:'grok'}},{repo:repoWithDocs()}),/알 수 없는 필드: provider/);
+ assert.throws(()=>compile({...g,asset_pipeline:'merc-guild'},{repo:repoWithDocs()}),/형식/);
 });
 
 test('ui: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싼다',()=>{

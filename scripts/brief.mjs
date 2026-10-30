@@ -84,6 +84,23 @@ export function docDirectives(docs,picked,{repo,warn}){
 }
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
+// asset_pipeline: 이미지를 asset-pipeline MCP 서버(asset_build_brief → asset_generate → asset_inspect_run)로 만들게 한다.
+// 그 서버를 쓸 수 있는 일꾼은 Codex 설정(~/.codex/config.toml)에 asset_pipeline이 등록된 Luna뿐이다.
+// Claude 일꾼은 hyperfusion이 mcp__*를 막고, Grok·Antigravity에는 등록되어 있지 않다.
+export const PIPELINE_EXECUTOR='luna';
+export function pipelineDirectives(p){
+ if(!p||typeof p!=='object'||Array.isArray(p))fail('asset_pipeline은 {"project_id": "..."} 형식');
+ const unknown=Object.keys(p).filter(k=>k!=='project_id');
+ if(unknown.length)fail(`asset_pipeline에 알 수 없는 필드: ${unknown.join(', ')}`);
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(p.project_id??''))fail('asset_pipeline.project_id는 영문·숫자로 시작하고 영문·숫자·_-로 64자 이내');
+ return [
+  `Generate images only through the asset_pipeline MCP tools: asset_build_brief (project_id "${p.project_id}", reference images and design docs as absolute paths) → asset_route → asset_generate → asset_inspect_run. Never draw, synthesize, download or edit images by any other means.`,
+  'Call asset_generate once per asset. Do not retry, change provider or workflow, or work around a BLOCKED, UNAVAILABLE or FAILED result: stop and return needs_decision with the tool status and error_code.',
+  'Poll asset_inspect_run until the run leaves RUNNING, then copy the produced image to its manifest path. Only resize or convert format to meet the manifest; do not repaint it.',
+  'List every run_id with its final status and review state in remaining_risks. Pipeline output stays a candidate (REVIEW_REQUIRED, game_ready=false) until a human approves it; never claim approval.'
+ ];
+}
+
 export function autoAcceptance(input,kind){
  const out=[];
  const paths=input.scope.paths;
@@ -135,6 +152,12 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  // 검사 기준 파일을 일꾼 범위에 넣으면 일꾼이 검사를 약하게 고쳐 통과시킬 수 있다.
  for(const k of ['schema','assets_manifest'])
   if(input[k]&&input.scope.paths.includes(input[k]))fail(`${k}(${input[k]})가 scope.paths에 있음: 검사 기준은 일꾼이 고칠 수 없게 범위 밖에 둘 것`);
+ let pipeline=[];
+ if(input.asset_pipeline!==undefined){
+  if(kind.task_kind!=='image-asset')fail(`asset_pipeline은 image-asset 작업에만 쓸 수 있음: ${input.game_kind}`);
+  pipeline=pipelineDirectives(input.asset_pipeline);
+  warn(`asset_pipeline 작업은 asset_pipeline MCP가 등록된 Codex 일꾼만 할 수 있음: fusion-state.mjs init <저장소> <brief> --executor ${PIPELINE_EXECUTOR}`);
+ }
 
  const role=input.role===undefined?kind.role:input.role;
  const picked=input.context_sections??{};
@@ -150,6 +173,7 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  const constraints=[
   ...kind.constraints,
   ...(role?roleDirectives(role,root):[]),
+  ...pipeline,
   ...(docs.length?[`Single source of truth: the design docs below override your assumptions. If they conflict with this brief, return needs_decision.`,...docDirectives(docs,picked,{repo,warn})]:[]),
   ...(input.constraints??[])
  ];
