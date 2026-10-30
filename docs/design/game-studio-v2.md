@@ -1,6 +1,15 @@
 # hf-game-studio v2: 게임 개발 특화 설계
 
-작성: 2026-10-30. 상태: 제안(결정 전).
+작성: 2026-10-30. 상태: 방향 결정됨(아래 "결정"). 세부 구현은 실행 순서대로 진행.
+
+## 결정 (2026-10-30)
+
+| 질문 | 결정 |
+|---|---|
+| hyperfusion 의존 | **의존을 끊고 좋은 부분만 가져온다.** 무엇을 가져올지는 "hyperfusion에서 가져올 것" 참고 |
+| Godot 버전 | **4.7 이상으로 고정** (godot-ai MCP 요구 사항, Dialogic 2는 4.5 이상) |
+| 대사 형식 | **엔진 중립 JSON이 원본이고, Dialogic 2 타임라인(`.dtl`)으로 변환한다.** 웹 프로토타입도 같은 JSON을 읽는다 |
+| 웹 프로토타입 | **Phaser 4** (4.2.x, Vite + TypeScript) |
 
 ## 왜 바꾸나
 
@@ -31,10 +40,22 @@ hf-game-studio는 hyperfusion 위에 게임 작업 종류를 얹는 얇은 층�
 |---|---|---|
 | hf-game-studio | 게임 스튜디오의 두뇌: 작업 종류, 역할, 검사 도구, 흐름 | 중심. Claude Code 플러그인(스킬, 에이전트, 훅)으로 게임 저장소에 설치 |
 | asset-pipeline | 애셋 공장: 이미지, 픽셀, 애니메이션, 효과음 | MCP 서버로 연결. 리드가 직접 호출 |
-| hyperfusion | 외부 모델 병렬 실행 엔진 | **선택 의존.** 대량 병렬 구현이 필요할 때만 사용 |
+| hyperfusion | (의존 끊음) | 쓸 만한 부분만 hf-game-studio로 옮겨 온다 |
 | Godot MCP(외부) | Godot 에디터·실행 제어 | MCP 서버로 연결 |
 
-hyperfusion에서 가져올 것은 코드보다 **외부 CLI를 안전하게 부르는 방법**이다. 모델 고정, 인증과 지원 플래그 확인, 읽기 전용 샌드박스, 결과 형식 고정이 여기에 해당한다. 이 부분은 hf-game-studio에 얇은 호출 스크립트로 둔다(아래 "전문가 호출").
+## hyperfusion에서 가져올 것
+
+hyperfusion은 Claude 토큰을 아끼려는 위임 엔진이라 라운드, 리스, 워크트리, 메모리, 자동 조종 같은 장치가 크다. v2는 Claude가 직접 구현하므로 이 장치들은 필요 없다. 아래만 옮겨 오고, 옮길 때 hf-game-studio 규모에 맞게 줄인다.
+
+| 가져올 것 | hyperfusion 출처 | 왜 |
+|---|---|---|
+| 외부 CLI 어댑터: 모델 고정, 지원 플래그·인증 확인, 결과 JSON 스키마 고정 | `scripts/adapters/{codex,antigravity,agy-model,grok,common}.mjs` | Codex 리뷰, Argon 글쓰기를 안정적으로 부르는 핵심. Windows에서 agy 프롬프트 길이 문제 같은 현장 경험이 담겨 있다 |
+| 교차 계열 리뷰 규칙: 리뷰어에게 작성자의 요약·주장·이전 판정을 주지 않고 diff, 파일, 검사 결과만 준다 | `review-plan.mjs`, `references/review-protocol.md` | 리뷰가 작성자의 결론에 끌려가지 않게 한다 |
+| 지적별 처분: act, consider, noted, dismissed, contract_misread와 이유 | `review-plan.mjs`, `metrics` | 리뷰어별로 쓸모 있는 지적 비율을 볼 수 있다 |
+| 수용 검사 무결성: 검사 기준 파일은 작업 범위 밖, 시작 전에 이미 통과하면 거절(red-first) | `acceptance-integrity.mjs`, `acceptance.mjs` | 검사를 느슨하게 고쳐 통과하는 길을 막는다. 지금 `brief.mjs`에도 일부 있다 |
+| 비밀 읽기 차단, 출력 마스킹 | `bash-policy.mjs`(`secretReadDeny`), `redaction.mjs` | 외부 CLI에 키나 토큰이 새지 않게 한다 |
+
+가져오지 않는 것: 라운드와 리스(`fusion-state`, `writer-lease`), 워크트리 관리, 메모리 시스템, 자동 조종, 사용량 계산, 팀 구성. 대량 병렬 구현이 꼭 필요해지면 그때 hyperfusion을 따로 쓴다.
 
 ## 전문가 호출
 
@@ -46,9 +67,8 @@ hyperfusion에서 가져올 것은 코드보다 **외부 CLI를 안전하게 부
 | 효과음 | Stable Audio 3 | asset-pipeline MCP, SFX | 프롬프트 작성(소리는 들을 수 없음) |
 | 시나리오·대사·로어 | Gemini Argon | `agy` CLI, 읽기 전용 | 용어집·세계관 일관성 검수 |
 | 코드 리뷰 | Codex(또는 Gemini) | `codex exec` 읽기 전용 샌드박스 | 지적을 검증하고 반영 |
-| 대량 병렬 구현 | hyperfusion 일꾼 | `fusion-state.mjs` | 범위 나누기, 통합 |
 
-리드가 asset-pipeline을 직접 부르므로 hyperfusion의 MCP 차단은 문제가 되지 않는다. 단, hyperfusion 작업이 진행 중인 저장소에서는 리드 가드가 쓰기 MCP를 막을 수 있다. 애셋 생성은 hyperfusion 라운드 밖에서 한다.
+리드가 asset-pipeline을 직접 부르므로 MCP 차단 문제는 사라진다.
 
 ## 단계별 흐름
 
@@ -56,13 +76,29 @@ hyperfusion에서 가져올 것은 코드보다 **외부 CLI를 안전하게 부
 - GDD, 세계관, 용어집 초안: Claude가 구조를 잡고 Argon이 문장과 분위기를 쓴다.
 - 아트 바이블과 무드: asset-pipeline으로 컨셉 이미지 후보를 만든다.
 
-### 2. 웹 프로토타입(버림)
-- HTML/Canvas로 핵심 루프만 만든다. 기존 `screenshot.mjs`로 화면을 확인한다.
-- 남기는 것: 재미 판정, 수치(데이터 JSON), 설계 문서 수정. 코드는 버린다.
+### 2. 웹 프로토타입(버림): Phaser 4
+- Phaser 4(4.2.x) + Vite + TypeScript. 공식 생성기 `npm create @phaserjs/game@latest`로 시작한다.
+- 핵심 루프만 만든다. 데이터 JSON, 애셋, 대사 JSON은 Godot과 같은 파일을 읽는다.
+- 검사는 두 층이다.
+  - 규칙 로직: 엔진과 분리해 Vitest로 단위 테스트한다.
+  - 화면: Playwright로 부팅을 확인하고 스크린샷을 찍는다. 화면 비교가 흔들리지 않게 소프트웨어 GL(swiftshader), 고정 프레임, 움직이는 영역 가리기를 쓴다.
+  - 기존 `screenshot.mjs`를 Phaser용으로 넓힌다.
+- 남기는 것: 재미 판정, 수치(데이터 JSON), 대사, 설계 문서 수정. 코드는 버린다.
 
-### 3. Godot 본편
-- 데이터 JSON과 애셋을 그대로 가져온다.
+### 3. Godot 본편: 4.7 이상
+- 데이터 JSON, 대사 JSON, 애셋을 그대로 가져온다.
 - 언어는 게임별로 정한다. 기본은 GDScript이고, 무거운 시뮬레이션이나 .NET 라이브러리가 필요하면 C#을 쓴다.
+
+## 대사: 엔진 중립 JSON → Dialogic
+
+원본은 엔진 중립 JSON 하나다. Argon이 쓰고, Claude가 스키마와 용어집으로 검수한다.
+
+- **스키마:** 화자, 표정(portrait), 대사, 선택지, 조건, 변수 설정, 점프와 라벨. Dialogic 2의 이벤트(text, join/leave, choice, condition, set, label/jump)에 1:1로 대응하는 범위만 쓴다. 여기서 벗어나는 기능은 넣지 않는다.
+- **변환:** `scripts/dialogue-to-dtl.mjs`가 JSON을 Dialogic 타임라인 텍스트(`.dtl`)로 만든다. `.dtl`은 사람이 읽을 수 있는 텍스트 형식이라 변환 결과를 바로 리뷰할 수 있다.
+- **캐릭터:** 화자 ID는 Dialogic 캐릭터 파일(`.dch`) 이름과 같게 맞춘다. 캐릭터 파일은 Godot에서 만든다.
+- **번역:** Dialogic의 CSV 번역 기능을 쓴다. 원본 JSON에는 대사 ID를 둬서 번역 키로 쓴다.
+- **웹 프로토타입:** Phaser 쪽은 같은 JSON을 읽는 작은 재생기를 둔다. 프로토타입이 끝나면 버린다.
+- **검사:** JSON 스키마 검사, 용어집에 없는 고유명사 검사, 변환한 `.dtl`을 Godot에서 `DialogicTimeline.from_text`로 읽어 보는 스모크 테스트.
 
 ## Godot 검증
 
@@ -89,7 +125,7 @@ hyperfusion에서 가져올 것은 코드보다 **외부 CLI를 안전하게 부
 | tomyud1/godot-mcp (Godlink) | 에디터 애드온 + MCP | 입력 전송, 스크린샷, 배치 실행 취소 | 에디터 하나만 연결 |
 | IvanMurzak/Godot-MCP | C# 애드온 + 클라우드 | C# 실행, 스크린샷 | 클라우드 연결 전제 |
 
-1차 평가 대상은 **hi-godot/godot-ai**, 가벼운 대안은 **Coding-Solo/godot-mcp**로 한다. 실제 프로젝트에서 한 장면을 만들고, 실행하고, 스크린샷을 찍고, 테스트를 돌려 본 뒤 고른다.
+Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai**, 가벼운 대안은 **Coding-Solo/godot-mcp**로 한다. 실제 프로젝트에서 한 장면을 만들고, 실행하고, 스크린샷을 찍고, 테스트를 돌려 본 뒤 고른다.
 
 ## 애셋을 Godot으로
 
@@ -108,12 +144,12 @@ hyperfusion의 6종에 묶이지 않고 hf-game-studio가 직접 정의한다.
 | 종류 | 담당 | 검사 |
 |---|---|---|
 | gdd, lore | Claude 구조 + Argon 문장 | 용어집 일관성 검수 |
-| narrative(대사) | Argon | 스키마 + 용어집 |
+| narrative(대사) | Argon | 대사 JSON 스키마 + 용어집 + `.dtl` 변환 스모크 |
 | balance-data, economy-data | Claude | JSON 스키마 |
 | art-image, art-edit | asset-pipeline | 매니페스트 + 사람 승인 |
 | sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 |
 | sfx | asset-pipeline | WAV 매니페스트 + 사람 청취 |
-| web-prototype | Claude | 스크린샷 |
+| web-prototype | Claude (Phaser 4) | Vitest + Playwright 스크린샷 |
 | godot-scene, godot-code | Claude (+ Godot MCP) | 문법 검사 + gdUnit4 + 스크린샷 |
 | review | 다른 계열 모델 | 지적 목록 |
 
@@ -126,16 +162,18 @@ hyperfusion의 6종에 묶이지 않고 hf-game-studio가 직접 정의한다.
 ## 실행 순서
 
 1. **PR 8 정리:** WAV 검사와 폴링 지시문 수정은 v2에서도 쓴다. 머지한다.
-2. **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용)와 `write`(agy Argon)를 만든다. hyperfusion 어댑터의 플래그와 인증 확인 방식을 참고한다.
-3. **애셋 스크립트:** 매니페스트 항목(프롬프트, 종류, 길이)을 읽어 asset-pipeline MCP를 직접 부르는 `scripts/assets.mjs`를 만든다. 후보 여러 개 생성을 지원한다.
-4. **Godot 템플릿:** `templates/godot/`에 project.godot, gdUnit4, Aseprite Wizard 설정, 검사 스크립트(문법, 테스트, 스크린샷)를 둔다.
-5. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
-6. **작업 종류 재정의:** `game-kinds.json`을 hyperfusion task_kind에서 떼어 내고, hyperfusion으로 보낼 때만 매핑한다.
-7. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션.
+2. **hyperfusion에서 옮겨 오기:** 외부 CLI 어댑터(codex, agy, grok), 비밀 차단과 마스킹을 `scripts/lib/`로 줄여 옮긴다.
+3. **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용, 결론 없이 diff와 검사 결과만 전달, 지적별 처분)와 `write`(agy Argon)를 만든다.
+4. **대사 파이프라인:** 대사 JSON 스키마, 용어집 검사, `dialogue-to-dtl.mjs` 변환기.
+5. **애셋 스크립트:** 매니페스트 항목(프롬프트, 종류, 길이)을 읽어 asset-pipeline MCP를 직접 부르는 `scripts/assets.mjs`를 만든다. 후보 여러 개 생성을 지원한다.
+6. **Phaser 템플릿:** `templates/phaser/`에 Phaser 4 + Vite + TypeScript, Vitest, Playwright 스크린샷, 데이터·대사 JSON 로더를 둔다.
+7. **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot, gdUnit4, Aseprite Wizard, Dialogic 2, 검사 스크립트(문법, 테스트, 스크린샷)를 둔다.
+8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
+9. **hyperfusion 의존 제거:** `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
+10. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션.
 
-## 열린 질문
+## 남은 확인 거리
 
-- hyperfusion 의존을 완전히 끊을지, 병렬 구현용으로 남길지. 지금 제안은 선택 의존이다.
-- Godot 4.7 이상으로 고정할지. godot-ai를 쓰려면 4.7 이상이 필요하다.
-- 시나리오 산출물 형식. Godot 대화 플러그인(Dialogic 등)에 맞출지, 엔진 중립 JSON으로 둘지.
-- 웹 프로토타입 기술. 지금처럼 순수 HTML/Canvas로 갈지, Phaser 같은 엔진을 쓸지.
+- Phaser 쪽 에이전트 도구(Phaser Agent MCP)가 프로토타입에 쓸 만한지. 공식 사이트에 있다는 것만 확인했다.
+- Dialogic 2 최신 릴리스가 Godot 4.7에서 문제없이 도는지. 문서상 요구 사항은 4.5 이상이다.
+- 2단계에서 hyperfusion 코드를 옮길 때 라이선스와 출처 표기(같은 저자이지만 NOTICE에 남긴다).
