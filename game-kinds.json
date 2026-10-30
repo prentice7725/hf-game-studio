@@ -11,10 +11,12 @@
       ]
     },
     "narrative": {
+      "$comment": "대사 JSON은 스키마만으로 부족하다. dialogue-to-dtl.mjs --check가 스키마, 그래프 규칙, 용어집 인물 ID, Dialogic 변환 가능 여부를 한 번에 검사한다.",
       "task_kind": "docs",
       "role": "writer",
       "allowed_actions": ["read", "edit"],
-      "verify": "schema",
+      "verify": "dialogue",
+      "require": ["schema"],
       "constraints": [
         "Use only names, places and terms defined in the glossary and world docs; propose new ones under remaining_risks instead of inventing them silently."
       ]

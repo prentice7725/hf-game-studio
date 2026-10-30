@@ -1,7 +1,7 @@
 {
   "name": "hf-game-studio",
   "version": "0.1.0",
-  "description": "HyperFusion 위에 올리는 멀티 모델 게임 개발 레이어",
+  "description": "멀티 모델 게임 개발 스튜디오. Claude가 리드, 전문가 모델은 읽기 전용(v2 전환 중, hyperfusion 경로는 과도기)",
   "type": "module",
   "license": "MIT",
   "engines": {"node": ">=22"},

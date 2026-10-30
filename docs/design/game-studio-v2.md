@@ -94,7 +94,7 @@ hyperfusion은 Claude 토큰을 아끼려는 위임 엔진이라 라운드, 리�
 원본은 엔진 중립 JSON 하나다. Argon이 쓰고, Claude가 스키마와 용어집으로 검수한다.
 
 - **스키마:** 화자, 표정(portrait), 대사, 선택지, 조건, 변수 설정, 점프와 라벨. Dialogic 2의 이벤트(text, join/leave, choice, condition, set, label/jump)에 1:1로 대응하는 범위만 쓴다. 여기서 벗어나는 기능은 넣지 않는다.
-- **변환:** `scripts/dialogue-to-dtl.mjs`가 JSON을 Dialogic 타임라인 텍스트(`.dtl`)로 만든다. `.dtl`은 사람이 읽을 수 있는 텍스트 형식이라 변환 결과를 바로 리뷰할 수 있다.
+- **변환:** `tools/dialogue-to-dtl.mjs`(setup이 게임 저장소의 `tools/hfgs/`로 복사)가 JSON을 Dialogic 타임라인 텍스트(`.dtl`)로 만든다. `.dtl`은 사람이 읽을 수 있는 텍스트 형식이라 변환 결과를 바로 리뷰할 수 있다.
 - **캐릭터:** 화자 ID는 Dialogic 캐릭터 파일(`.dch`) 이름과 같게 맞춘다. 캐릭터 파일은 Godot에서 만든다.
 - **번역:** Dialogic의 CSV 번역 기능을 쓴다. 원본 JSON에는 대사 ID를 둬서 번역 키로 쓴다.
 - **웹 프로토타입:** Phaser 쪽은 같은 JSON을 읽는 작은 재생기를 둔다. 프로토타입이 끝나면 버린다.
@@ -161,15 +161,17 @@ hyperfusion의 6종에 묶이지 않고 hf-game-studio가 직접 정의한다.
 
 ## 실행 순서
 
-1. **PR 8 정리:** WAV 검사와 폴링 지시문 수정은 v2에서도 쓴다. 머지한다.
-2. **hyperfusion에서 옮겨 오기:** 외부 CLI 어댑터(codex, agy, grok), 비밀 차단과 마스킹을 `scripts/lib/`로 줄여 옮긴다.
-3. **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용, 결론 없이 diff와 검사 결과만 전달, 지적별 처분)와 `write`(agy Argon)를 만든다.
-4. **대사 파이프라인:** 대사 JSON 스키마, 용어집 검사, `dialogue-to-dtl.mjs` 변환기.
+진행 표시는 PR이 main에 들어간 시점 기준이다.
+
+1. ✅ (PR 8) **PR 8 정리:** WAV 검사와 폴링 지시문 수정은 v2에서도 쓴다. 머지한다.
+2. ✅ (PR 10) **hyperfusion에서 옮겨 오기:** 외부 CLI 어댑터(codex, agy, grok), 비밀 차단과 마스킹을 `scripts/lib/`로 줄여 옮긴다.
+3. ✅ (PR 11) **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용, 결론 없이 diff와 검사 결과만 전달, 지적별 처분)와 `write`(agy Argon)를 만든다.
+4. ✅ (PR 12) **대사 파이프라인:** 대사 JSON 스키마, 용어집 검사, `dialogue-to-dtl.mjs` 변환기. narrative brief의 수용 검사는 이 `--check`로 자동 생성된다.
 5. **애셋 스크립트:** 매니페스트 항목(프롬프트, 종류, 길이)을 읽어 asset-pipeline MCP를 직접 부르는 `scripts/assets.mjs`를 만든다. 후보 여러 개 생성을 지원한다.
 6. **Phaser 템플릿:** `templates/phaser/`에 Phaser 4 + Vite + TypeScript, Vitest, Playwright 스크린샷, 데이터·대사 JSON 로더를 둔다.
 7. **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot, gdUnit4, Aseprite Wizard, Dialogic 2, 검사 스크립트(문법, 테스트, 스크린샷)를 둔다.
 8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
-9. **hyperfusion 의존 제거:** `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
+9. **hyperfusion 의존 제거(5~8보다 앞당기는 것을 검토):** 5~8단계는 모두 v2 경로 위에서만 쓸모가 있어, 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어난다. `brief.mjs`의 red-first·범위 밖 검사 기준 같은 장치는 남긴다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
 10. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션.
 
 ## 남은 확인 거리

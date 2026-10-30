@@ -161,10 +161,29 @@ test('기본 출력은 저장소 밖, 저장소 안 여부 판정',()=>{
  assert.equal(insideRepo(repo+'-other/BRIEF.json',repo),false);
 });
 
-test('narrative는 docs로, Gemini Argon 우선 배치 대상',()=>{
+test('narrative는 docs로, 대사 검사는 dialogue-to-dtl --check 하나로 자동',()=>{
  const b=compile(example('contract-intro-dialogue.json'),{repo:repoWithDocs()});
  assert.equal(b.task_kind,'docs');
  assert.ok(b.constraints.some(c=>c.startsWith('Role writer:')));
+ assert.deepEqual(b.acceptance_commands,['node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --schema design/schemas/dialogue.schema.json --check']);
+ assert.deepEqual(b.acceptance_map,{AC1:b.acceptance_commands,AC2:b.acceptance_commands},'스키마 검사를 따로 돌리지 않는다');
+});
+
+test('narrative: 용어집은 검사 기준이라 범위 안에 못 두고, glossary를 적으면 --glossary로 넘긴다',()=>{
+ const repo=repoWithDocs(),g=example('contract-intro-dialogue.json');
+ assert.throws(()=>compile({...g,scope:{paths:[...g.scope.paths,'design/glossary.md']}},{repo}),/design\/glossary\.md가 scope\.paths에 있음/);
+ assert.throws(()=>compile({...g,glossary:'design/cast.md',scope:{paths:[...g.scope.paths,'design/cast.md']}},{repo}),/glossary\(design\/cast\.md\)가 scope\.paths에 있음/);
+ assert.throws(()=>compile({...g,expect:{'/id':'x'}},{repo}),/expect는 schema 검사 작업/);
+ const b=compile({...g,glossary:'design/cast.md'},{repo});
+ assert.match(b.acceptance_commands[0],/ --glossary design\/cast\.md --check$/);
+});
+
+test('narrative: 이미 있는 대사 파일을 고치는 작업은 red-first 경고',()=>{
+ const repo=repoWithDocs(),warnings=[];
+ fs.mkdirSync(path.join(repo,'data','dialogue'),{recursive:true});
+ fs.writeFileSync(path.join(repo,'data','dialogue','contract-grain-cart.json'),'{}');
+ compile(example('contract-intro-dialogue.json'),{repo,warn:m=>warnings.push(m)});
+ assert.ok(warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')&&w.includes('contract-grain-cart.json')));
 });
 
 test('검사 기준 파일을 일꾼 범위에 넣으면 거절',()=>{

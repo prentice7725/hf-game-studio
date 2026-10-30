@@ -1,8 +1,12 @@
 ---
 name: hf-game-studio
-description: HyperFusion 위에 올린 게임 개발 레이어. 게임 작업(GDD, 시나리오, 수치 데이터, 이미지 애셋, UI)을 게임 brief로 쓰고 hyperfusion brief로 컴파일해 일꾼(Grok, Gemini Argon, Sonnet 등)에게 맡긴다. 게임 기획·애셋·밸런스 작업이나 hf-game-studio 요청에 쓴다.
+description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이고 Gemini Argon(글), asset-pipeline(이미지·효과음), 다른 계열 모델(리뷰)을 전문가로 부른다. 과도기에는 게임 brief를 hyperfusion brief로 컴파일해 일꾼에게 맡기는 경로도 쓴다. 게임 기획·대사·애셋·밸런스 작업이나 hf-game-studio 요청에 쓴다.
 ---
 # hf-game-studio
+
+**v2로 전환 중이다.** 방향은 "Claude가 리드이자 주 구현자, 전문가 모델은 읽기 전용으로 잘하는 일만"이고, 결정과 실행 순서는 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있다. 새 작업을 시작하기 전에 그 문서의 "결정"과 "실행 순서"를 먼저 읽는다. 전문가 호출은 아래 "전문가 호출(consult)", 대사는 "대사는 JSON이 원본" 규칙을 따른다. 아래 hyperfusion 경로는 9단계에서 걷어 낼 때까지 그대로 동작한다.
+
+## hyperfusion 경로(과도기)
 
 이 스킬은 **hyperfusion을 대체하지 않는다.** 실행(일꾼 배치, 반려·교체, 스냅샷 검증, 리뷰, 마일스톤 게이트)은 전부 hyperfusion이 하고, 이 스킬은 그 앞단에서 게임 작업을 hyperfusion이 받는 형식으로 바꿔 준다. hyperfusion의 SKILL.md 원칙(리드는 코드를 만지지 않는다, 빈 반려 금지 등)이 그대로 적용된다.
 
@@ -25,7 +29,7 @@ description: HyperFusion 위에 올린 게임 개발 레이어. 게임 작업(GD
 | game_kind | hyperfusion task_kind | 역할 | 자동 수용 검사 | 기본 배치(프리셋) |
 |---|---|---|---|---|
 | gdd | docs | game-designer | 없음 | Gemini Argon → Sonnet |
-| narrative | docs | writer | `schema` 있으면 스키마 | Gemini Argon → Sonnet |
+| narrative | docs | writer | `dialogue-to-dtl.mjs --check`(스키마 필수) | Gemini Argon → Sonnet |
 | lore | docs | world-builder | 없음 | Gemini Argon → Sonnet |
 | balance-data | code (medium) | systems-designer | 스키마(필수) | Sonnet → Grok |
 | economy-data | code (medium) | economy-designer | 스키마(필수) | Sonnet → Grok |
@@ -44,11 +48,11 @@ hyperfusion의 task_kind는 6종으로 고정이라 지표(실적)는 task_kind 
 - **이미 있는 파일을 고칠 때는 `expect`.** 형식 검사는 처음부터 통과해 hyperfusion이 `ACCEPTANCE_ALREADY_GREEN`으로 거절한다. 데이터는 `expect`에 바뀔 값을 적고, 이미지는 바뀐 점을 확인하는 검사를 따로 넣는다.
 - **로컬 서버 스크린샷은 `serve`.** 수용 검사는 일꾼 프로세스가 끝난 뒤 돌기 때문에 일꾼이 띄운 서버에 기대면 항상 실패한다. 서버 실행 명령을 `screenshot.serve`에 적어 검사 도구가 띄우고 종료하게 한다(없으면 컴파일러가 거절).
 
-- **검사 기준은 범위 밖에.** `schema`, `assets_manifest`는 `scope.paths`에 넣을 수 없다(컴파일러가 거절). 일꾼이 기준을 느슨하게 고쳐 통과하는 길을 막는다.
+- **검사 기준은 범위 밖에.** `schema`, `assets_manifest`, `glossary`(대사 검사의 용어집)는 `scope.paths`에 넣을 수 없다(컴파일러가 거절). 일꾼이 기준을 느슨하게 고쳐 통과하는 길을 막는다.
 - **asset-pipeline으로 이미지·효과음 만들기.** image-asset·sfx brief에 `"asset_pipeline": {"project_id": "<게임 id>", "output_class": "<NONPIXEL_IMAGE|PIXEL_STATIC|SFX>"}`를 넣으면(SFX는 `duration_seconds` 가능) 일꾼이 asset_pipeline MCP 도구(`asset_build_brief` → `asset_route` → `asset_generate` → `asset_inspect_run`)로만 생성하고, 상태가 `STARTING`·`RUNNING`을 벗어날 때까지 같은 세션에서 기다리며, 재시도·우회 없이 실패하면 needs_decision으로 멈추고, run_id와 리뷰 상태를 보고한다. 이 MCP를 쓸 수 있는 일꾼은 Codex 설정에 asset_pipeline이 등록된 Luna뿐이라 `fusion-state.mjs init $HF_REPO "$BRIEF" --executor luna`로 고정한다. 참조 이미지 편집(표정·포즈 변형 등)은 ComfyUI 워크플로가 모두 text-to-image라 CLI provider로만 되므로 `"workflow_id": "codex_imagegen"`(또는 `grok_imagine`)와 `"reference_image": "<저장소 기준 경로>"`를 함께 적는다. 참조 이미지는 `scope.paths` 밖에 둔다. 리드는 작업 밖에서 `asset_capabilities`로 준비 상태를 먼저 볼 수 있다.
 - **이미지는 사람 승인까지.** 매니페스트 검사는 크기·투명도·용량만 본다. 화풍 일관성은 리드 리뷰와 사용자 승인으로 본다. 승인 전 애셋은 아틀라스에 넣지 않는다.
 - **오디오는 효과음만.** 효과음(sfx)은 asset-pipeline을 쓰는 Luna만 만들 수 있어 asset_pipeline이 필수다. 음악·음성은 생성 일꾼이 없으므로 사양서(gdd)로만 다룬다. 효과음도 사람이 들어 보고 승인한다.
-- **대사는 JSON이 원본, Dialogic은 변환물.** 대사는 `design/schemas/dialogue.schema.json` 형식으로 쓴다. 화자(`speaker`)와 등장·퇴장 인물은 용어집 ID(Dialogic 캐릭터 파일 이름과 같음)이고, 화자가 없으면 서술이다. 노드의 `enter`는 대사 앞, `exit`는 대사 뒤에 나오고, `exit`는 선택지와 함께 쓸 수 없다. 대사에는 Dialogic 문법 기호(`[ ] { } < >`, 선택지는 `|`도)를 쓰지 않는다. `node tools/hfgs/dialogue-to-dtl.mjs <대사.json> --check`가 스키마, 그래프 규칙, 용어집에 없는 인물을 검사하고, `--check` 없이 돌리면 `<id>.dtl`을 만든다. .dtl은 직접 고치지 않는다. narrative brief에는 이 `--check` 명령을 `acceptance_commands`에 넣는다. Argon에게 쓰게 할 때는 `consult.mjs write`에 `"format": "json"`과 스키마 경로를 `structure`로 준다.
+- **대사는 JSON이 원본, Dialogic은 변환물.** 대사는 `design/schemas/dialogue.schema.json` 형식으로 쓴다. 화자(`speaker`)와 등장·퇴장 인물은 용어집 ID(Dialogic 캐릭터 파일 이름과 같음)이고, 화자가 없으면 서술이다. 노드의 `enter`는 대사 앞, `exit`는 대사 뒤에 나오고, `exit`는 선택지와 함께 쓸 수 없다. 대사에는 Dialogic 문법 기호(`[ ] { } < >`, 선택지는 `|`도)를 쓰지 않는다. `node tools/hfgs/dialogue-to-dtl.mjs <대사.json> --check`가 스키마, 그래프 규칙, 용어집에 없는 인물을 검사하고, `--check` 없이 돌리면 `<id>.dtl`을 만든다. .dtl은 직접 고치지 않는다. narrative brief는 컴파일러가 이 `--check`를 자동으로 수용 명령에 넣으므로 손으로 적지 않는다(`acceptance_map`에는 `"@auto"`). 용어집은 검사 기준이라 `scope.paths`에 둘 수 없고, 새 인물은 일꾼이 needs_decision으로 올린다. Argon에게 쓰게 할 때는 `consult.mjs write`에 `"format": "json"`과 스키마 경로를 `structure`로 준다.
 - **게이트는 hyperfusion 것 하나.** 원본 템플릿(Claude-Code-Game-Studios)의 디렉터 게이트·GDD 섹션 강제는 가져오지 않았다. 승인·체크포인트는 hyperfusion 프로젝트(`project.mjs`)로만 한다.
 - **작게 시작.** 첫 프로젝트는 `$HFGS/examples/PLAN.json`처럼 용병 1명 + 계약 1개 + 화면 1개 크기로 한 마일스톤만 돌린다.
 
