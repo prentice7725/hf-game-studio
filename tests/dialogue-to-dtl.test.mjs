@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {toDtl,lint,glossaryIds,convert} from '../tools/dialogue-to-dtl.mjs';
 import {validate} from '../tools/validate-data.mjs';
-import {STUDIO_ROOT} from '../scripts/brief.mjs';
+import {STUDIO_ROOT} from '../scripts/task.mjs';
 
 const SCHEMA=path.join(STUDIO_ROOT,'templates','design','schemas','dialogue.schema.json');
 const GLOSSARY=path.join(STUDIO_ROOT,'templates','design','glossary.md');

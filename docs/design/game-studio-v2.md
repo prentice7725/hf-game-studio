@@ -40,7 +40,7 @@ hf-game-studio는 hyperfusion 위에 게임 작업 종류를 얹는 얇은 층�
 |---|---|---|
 | hf-game-studio | 게임 스튜디오의 두뇌: 작업 종류, 역할, 검사 도구, 흐름 | 중심. Claude Code 플러그인(스킬, 에이전트, 훅)으로 게임 저장소에 설치 |
 | asset-pipeline | 애셋 공장: 이미지, 픽셀, 애니메이션, 효과음 | MCP 서버로 연결. 리드가 직접 호출 |
-| hyperfusion | (의존 끊음) | 쓸 만한 부분만 hf-game-studio로 옮겨 온다 |
+| hyperfusion | (의존 끊음, 9단계 완료) | 외부 CLI 어댑터·마스킹(`scripts/lib/`)과 수용 검사 무결성(`scripts/task.mjs`)만 옮겨 왔다 |
 | Godot MCP(외부) | Godot 에디터·실행 제어 | MCP 서버로 연결 |
 
 ## hyperfusion에서 가져올 것
@@ -139,19 +139,20 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 
 ## 게임 작업 종류(자체 등록)
 
-hyperfusion의 6종에 묶이지 않고 hf-game-studio가 직접 정의한다.
+`game-kinds.json`이 직접 정의한다(9단계에서 반영). 작업 흐름은 `task.mjs start → 구현 → verify → consult review`다.
 
-| 종류 | 담당 | 검사 |
-|---|---|---|
-| gdd, lore | Claude 구조 + Argon 문장 | 용어집 일관성 검수 |
-| narrative(대사) | Argon | 대사 JSON 스키마 + 용어집 + `.dtl` 변환 스모크 |
-| balance-data, economy-data | Claude | JSON 스키마 |
-| art-image, art-edit | asset-pipeline | 매니페스트 + 사람 승인 |
-| sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 |
-| sfx | asset-pipeline | WAV 매니페스트 + 사람 청취 |
-| web-prototype | Claude (Phaser 4) | Vitest + Playwright 스크린샷 |
-| godot-scene, godot-code | Claude (+ Godot MCP) | 문법 검사 + gdUnit4 + 스크린샷 |
-| review | 다른 계열 모델 | 지적 목록 |
+| 종류 | 담당 | 검사 | 상태 |
+|---|---|---|---|
+| gdd, lore | Claude 구조 + Argon 문장 | 용어집 일관성 검수(리드) | 있음 |
+| narrative(대사) | Argon 쓰고 Claude 검수 | `dialogue-to-dtl.mjs --check`(스키마 + 그래프 규칙 + 용어집 + `.dtl` 변환) | 있음 |
+| balance-data, economy-data, level | Claude | JSON 스키마(+ `expect`) | 있음 |
+| art-image, art-edit | asset-pipeline(리드가 MCP 호출) | 매니페스트 + 사람 승인 | 있음 |
+| sfx | asset-pipeline | WAV 매니페스트 + 사람 청취 | 있음 |
+| web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(Phaser 템플릿은 6단계) |
+| code | Claude | `acceptance_commands`의 테스트 | 있음 |
+| sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 | 5·10단계 뒤 |
+| godot-scene, godot-code | Claude (+ Godot MCP) | 문법 검사 + gdUnit4 + 스크린샷 | 7단계 |
+| review | 다른 계열 모델 | 지적 목록 | 있음(`consult.mjs review`, 작업 종류가 아니라 모든 작업의 마지막 단계) |
 
 ## 참고할 외부 프로젝트
 
@@ -171,7 +172,7 @@ hyperfusion의 6종에 묶이지 않고 hf-game-studio가 직접 정의한다.
 6. **Phaser 템플릿:** `templates/phaser/`에 Phaser 4 + Vite + TypeScript, Vitest, Playwright 스크린샷, 데이터·대사 JSON 로더를 둔다.
 7. **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot, gdUnit4, Aseprite Wizard, Dialogic 2, 검사 스크립트(문법, 테스트, 스크린샷)를 둔다.
 8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
-9. **hyperfusion 의존 제거(5~8보다 앞당기는 것을 검토):** 5~8단계는 모두 v2 경로 위에서만 쓸모가 있어, 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어난다. `brief.mjs`의 red-first·범위 밖 검사 기준 같은 장치는 남긴다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
+9. ✅ (5~8보다 앞당겨 진행) **hyperfusion 의존 제거:** `brief.mjs`(hyperfusion brief 변환)를 `task.mjs`(plan·start·check·verify)로 바꾸고, `game-kinds.json`에서 task_kind 매핑을 걷어 내 종류를 직접 정의하고, setup의 hyperfusion 프리셋과 CI의 hyperfusion 체크아웃을 지웠다. red-first와 검사 기준 파일 불변 규칙은 `task.mjs`에 남겼다. 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어 앞당겼다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
 10. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션.
 
 ## 남은 확인 거리

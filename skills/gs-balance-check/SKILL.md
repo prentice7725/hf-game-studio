@@ -6,7 +6,7 @@ argument-hint: "[데이터 파일 경로 | 시스템 이름]"
 # 밸런스 점검
 
 Claude-Code-Game-Studios의 `balance-check` 스킬을 hf-game-studio용으로 줄인 것이다(MIT, NOTICE.md 참고).
-읽기 전용이다. 데이터를 고치지 않고, 고칠 일이 있으면 hyperfusion 작업(balance-data)으로 넘긴다.
+읽기 전용이다. 데이터를 고치지 않고, 고칠 일이 있으면 balance-data 작업(task.mjs)으로 넘긴다.
 
 ## 문서 읽기
 
@@ -39,4 +39,4 @@ Claude-Code-Game-Studios의 `balance-check` 스킬을 hf-game-studio용으로 �
 | 항목 | 판정(정상 / 주의 / 문제 / 평가 불가) | 근거(파일:필드, 계산) | 제안 |
 |---|---|---|---|
 
-문제가 있으면 hyperfusion 작업으로 넘길 수 있게 "AC1: ..." 형식의 수용 기준 초안을 함께 적는다.
+문제가 있으면 작업 파일에 넣을 수 있게 "AC1: ..." 형식의 수용 기준 초안을 함께 적는다.

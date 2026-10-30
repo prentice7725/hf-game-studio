@@ -1,112 +1,109 @@
 {
-  "$comment": "게임 작업 종류(game_kind) → hyperfusion task_kind 매핑. hyperfusion의 task_kind는 6종으로 고정이라 게임 종류는 이 표로 내려 보낸다.",
+  "$comment": "게임 작업 종류. hf-game-studio가 직접 정의한다. owner는 결과물을 만드는 쪽(claude: 리드가 직접 구현, asset-pipeline: 리드가 MCP로 생성), writer는 글을 쓰는 전문가 모델(argon: Gemini Argon을 consult.mjs write로 부르고 리드가 검수). verify는 task.mjs가 자동으로 만드는 수용 검사, require는 작업 파일에 있어야 하는 필드, rules는 리드(와 작가 모델)가 따르는 규칙이다.",
   "kinds": {
     "gdd": {
-      "task_kind": "docs",
+      "owner": "claude",
+      "writer": "argon",
       "role": "game-designer",
-      "allowed_actions": ["read", "edit"],
-      "constraints": [
+      "rules": [
         "Edit only the design sections named in the objective; do not restructure the rest of the document.",
         "Every number you introduce must also appear in the formula or table it belongs to, or be marked TBD."
       ]
     },
-    "narrative": {
-      "$comment": "대사 JSON은 스키마만으로 부족하다. dialogue-to-dtl.mjs --check가 스키마, 그래프 규칙, 용어집 인물 ID, Dialogic 변환 가능 여부를 한 번에 검사한다.",
-      "task_kind": "docs",
-      "role": "writer",
-      "allowed_actions": ["read", "edit"],
-      "verify": "dialogue",
-      "require": ["schema"],
-      "constraints": [
-        "Use only names, places and terms defined in the glossary and world docs; propose new ones under remaining_risks instead of inventing them silently."
+    "lore": {
+      "owner": "claude",
+      "writer": "argon",
+      "role": "world-builder",
+      "rules": [
+        "New proper nouns must be added to the glossary in the same task, with a one-line definition, after the user agrees."
       ]
     },
-    "lore": {
-      "task_kind": "docs",
-      "role": "world-builder",
-      "allowed_actions": ["read", "edit"],
-      "constraints": [
-        "New proper nouns must be added to the glossary in the same round, with a one-line definition."
+    "narrative": {
+      "$comment": "대사 JSON은 스키마만으로 부족하다. dialogue-to-dtl.mjs --check가 스키마, 그래프 규칙, 용어집 인물 ID, Dialogic 변환 가능 여부를 한 번에 검사한다.",
+      "owner": "claude",
+      "writer": "argon",
+      "role": "writer",
+      "verify": "dialogue",
+      "require": ["schema"],
+      "rules": [
+        "Use only names, places and terms defined in the glossary and world docs; a new name is a question for the user, never a silent invention."
       ]
     },
     "balance-data": {
-      "task_kind": "code",
-      "difficulty": "medium",
+      "owner": "claude",
       "role": "systems-designer",
-      "allowed_actions": ["read", "edit", "test"],
       "verify": "schema",
       "require": ["schema"],
-      "constraints": [
+      "rules": [
         "Data files are the source of truth for numbers; do not hard-code the same values in game code.",
-        "State the formula or curve behind each changed value in remaining_risks if it is not already documented."
+        "State the formula or curve behind each changed value in the task note if it is not already documented."
       ]
     },
     "economy-data": {
-      "task_kind": "code",
-      "difficulty": "medium",
+      "owner": "claude",
       "role": "economy-designer",
-      "allowed_actions": ["read", "edit", "test"],
       "verify": "schema",
       "require": ["schema"],
-      "constraints": [
+      "rules": [
         "Every new resource needs at least one source (faucet) and one sink in the data you write or already present."
       ]
     },
     "level": {
-      "task_kind": "code",
+      "owner": "claude",
       "role": "level-designer",
-      "allowed_actions": ["read", "edit", "test"],
       "verify": "schema",
-      "constraints": []
+      "rules": []
     },
-    "image-asset": {
-      "task_kind": "image-asset",
+    "art-image": {
+      "$comment": "텍스트에서 이미지 생성. Claude는 그림을 그릴 수 없으므로 asset-pipeline MCP가 필수다.",
+      "owner": "asset-pipeline",
       "role": "technical-artist",
-      "allowed_actions": ["read", "edit"],
       "verify": "assets",
       "require": ["assets_manifest"],
-      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"]},
-      "constraints": [
+      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"], "required": true},
+      "rules": [
         "Save only the files listed in the asset manifest, at exactly those paths.",
         "Follow the art bible for palette, outline and camera angle; use the reference images it names."
       ]
     },
+    "art-edit": {
+      "$comment": "승인된 참조 이미지를 고치는 작업(표정·포즈 변형). ComfyUI 워크플로는 모두 text-to-image라 Codex·Grok CLI provider(workflow_id)로만 된다. 참조 이미지는 검사 기준이라 범위 밖에 둔다.",
+      "owner": "asset-pipeline",
+      "role": "technical-artist",
+      "verify": "assets",
+      "require": ["assets_manifest"],
+      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"], "required": true, "edit": true},
+      "rules": [
+        "Save only the files listed in the asset manifest, at exactly those paths.",
+        "Change only what the objective asks; everything else stays identical to the reference."
+      ]
+    },
     "sfx": {
-      "$comment": "hyperfusion에는 오디오 task_kind가 없어 애셋 생성 칸인 image-asset으로 내린다. 효과음을 만드는 일꾼은 asset-pipeline MCP를 쓰는 Luna뿐이라 asset_pipeline이 필수다.",
-      "task_kind": "image-asset",
+      "$comment": "효과음. Claude는 소리를 합성할 수 없으므로 asset-pipeline MCP(Stable Audio)가 필수다. 음악·음성 생성은 없다.",
+      "owner": "asset-pipeline",
       "role": "sound-designer",
-      "allowed_actions": ["read", "edit"],
       "verify": "assets",
       "require": ["assets_manifest"],
       "pipeline": {"output_classes": ["SFX"], "required": true},
-      "constraints": [
+      "rules": [
         "Save only the files listed in the asset manifest, at exactly those paths."
       ]
     },
-    "ui": {
-      "task_kind": "ui",
+    "web-prototype": {
+      "$comment": "버리는 웹 프로토타입(Phaser 4). 재미 확인용. 코드는 버리고 데이터·대사·설계 수정만 남긴다.",
+      "owner": "claude",
       "role": "ui-programmer",
-      "allowed_actions": ["read", "edit", "test", "build"],
       "verify": "screenshot",
-      "constraints": []
+      "rules": [
+        "Rules logic lives in plain functions with unit tests; the scene only renders and forwards input.",
+        "Read numbers, text and dialogue from the same data files Godot will read; never hard-code them."
+      ]
     },
-    "gameplay-code": {
-      "task_kind": "code",
+    "code": {
+      "$comment": "그 밖의 코드 작업(규칙 로직, 테스트, 리팩터). 수용 검사는 acceptance_commands에 테스트 명령으로 적는다.",
+      "owner": "claude",
       "role": "gameplay-programmer",
-      "allowed_actions": ["read", "edit", "test"],
-      "constraints": []
-    },
-    "tests": {
-      "task_kind": "tests",
-      "role": "gameplay-programmer",
-      "allowed_actions": ["read", "edit", "test"],
-      "constraints": []
-    },
-    "refactor": {
-      "task_kind": "refactor",
-      "role": "gameplay-programmer",
-      "allowed_actions": ["read", "edit", "test"],
-      "constraints": []
+      "rules": []
     }
   },
   "context_docs": [

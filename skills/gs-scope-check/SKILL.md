@@ -1,12 +1,12 @@
 ---
 name: gs-scope-check
-description: 마일스톤 계획(hyperfusion PLAN.json 또는 project.mjs status)이 범위를 넘는지, 작업이 너무 큰지, 의존 순서가 맞는지 점검한다. 마일스톤 계획 검토에 쓴다.
-argument-hint: "[PLAN.json 경로]"
+description: 마일스톤 계획(examples/milestone-1.md 같은 작업 목록)이 범위를 넘는지, 작업이 너무 큰지, 의존 순서가 맞는지 점검한다. 마일스톤 계획 검토에 쓴다.
+argument-hint: "[마일스톤 문서 경로]"
 ---
 # 범위 점검
 
 Claude-Code-Game-Studios의 `scope-check` 스킬을 hf-game-studio용으로 줄인 것이다(MIT, NOTICE.md 참고).
-읽기 전용이다. 계획 변경은 hyperfusion `project.mjs amend`와 사용자 승인으로 한다.
+읽기 전용이다. 계획 변경은 사용자와 상의해 작업 목록을 고친다.
 
 ## 문서 읽기
 

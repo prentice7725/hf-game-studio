@@ -1,6 +1,6 @@
 {
   "task_id": "M1-T1-merc-data",
-  "game_kind": "balance-data",
+  "kind": "balance-data",
   "objective": "Create the first mercenary, Ash, in data/mercenaries.json following design/gdd.md and the mercenaries schema.",
   "scope": {
     "paths": [

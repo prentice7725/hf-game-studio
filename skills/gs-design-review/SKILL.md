@@ -6,7 +6,7 @@ argument-hint: "[문서 경로] [섹션 이름]"
 # 설계 리뷰
 
 Claude-Code-Game-Studios의 `design-review` 스킬을 hf-game-studio용으로 줄인 것이다(MIT, NOTICE.md 참고).
-읽기 전용이다. 고칠 일은 hyperfusion 작업(gdd, lore)으로 넘긴다.
+읽기 전용이다. 고칠 일은 gdd·lore 작업(task.mjs)으로 넘긴다.
 
 ## 문서 읽기
 

@@ -1,6 +1,6 @@
 {
   "task_id": "M1-T4-contract-board",
-  "game_kind": "ui",
+  "kind": "web-prototype",
   "difficulty": "medium",
   "objective": "Build the contract board screen that lists contracts from data/contracts.json and lets the player assign Ash to one.",
   "scope": {

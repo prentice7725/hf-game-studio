@@ -1,13 +1,25 @@
 {
   "task_id": "M1-T5-sword-swing-sfx",
-  "game_kind": "sfx",
+  "kind": "sfx",
   "objective": "Generate the sword swing sound effect with the asset-pipeline MCP server and save it at assets/sfx/sword-swing.wav.",
-  "scope": {"paths": ["assets/sfx/sword-swing.wav"]},
+  "scope": {
+    "paths": [
+      "assets/sfx/sword-swing.wav"
+    ]
+  },
   "assets_manifest": "design/asset-manifest.json",
-  "asset_pipeline": {"project_id": "merc-guild", "output_class": "SFX", "duration_seconds": 1.5},
+  "asset_pipeline": {
+    "project_id": "merc-guild",
+    "output_class": "SFX",
+    "duration_seconds": 1.5
+  },
   "success_criteria": [
     "AC1: assets/sfx/sword-swing.wav is a 44.1 kHz stereo WAV between 1 and 2 seconds under 512 KB",
     "AC2: it sounds like a short metallic sword swing whoosh with a light clang, with no music or voice"
   ],
-  "acceptance_map": {"AC1": ["@auto"]}
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ]
+  }
 }

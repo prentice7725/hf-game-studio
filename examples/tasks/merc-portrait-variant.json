@@ -1,13 +1,26 @@
 {
   "task_id": "M1-T3c-merc-portrait-angry",
-  "game_kind": "image-asset",
+  "kind": "art-edit",
   "objective": "Edit Ash's approved portrait design/refs/merc.png into an angry expression with the asset-pipeline MCP server and save it at assets/portraits/merc-ash-angry.png.",
-  "scope": {"paths": ["assets/portraits/merc-ash-angry.png"]},
+  "scope": {
+    "paths": [
+      "assets/portraits/merc-ash-angry.png"
+    ]
+  },
   "assets_manifest": "design/asset-manifest.json",
-  "asset_pipeline": {"project_id": "merc-guild", "output_class": "NONPIXEL_IMAGE", "workflow_id": "codex_imagegen", "reference_image": "design/refs/merc.png"},
+  "asset_pipeline": {
+    "project_id": "merc-guild",
+    "output_class": "NONPIXEL_IMAGE",
+    "workflow_id": "codex_imagegen",
+    "reference_image": "design/refs/merc.png"
+  },
   "success_criteria": [
     "AC1: assets/portraits/merc-ash-angry.png is a 256x256 PNG with a transparent background under 512 KB",
     "AC2: only the expression differs from design/refs/merc.png; silhouette, palette and outfit are unchanged"
   ],
-  "acceptance_map": {"AC1": ["@auto"]}
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ]
+  }
 }

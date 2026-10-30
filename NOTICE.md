@@ -27,7 +27,8 @@
 
 `scripts/lib/`의 외부 CLI 호출 코드는 hyperfusion 0.30.0에서 옮겨 와 줄인 것입니다. 전문가 모델을 읽기 전용으로만 부르므로
 구현 라운드, 쓰기 샌드박스, 재개(resume), 리스, 요청 전체 마스킹(maskTransport)은 가져오지 않았습니다.
-`scripts/brief.mjs`의 hyperfusion brief 변환은 아직 설치된 hyperfusion을 그대로 씁니다(v2 설계의 9단계에서 걷어 냄).
+`scripts/task.mjs`의 red-first(시작 전에 수용 검사가 실패하는지 확인)와 검사 기준 파일을 범위 밖에 두고 불변을 확인하는 규칙은
+hyperfusion의 `acceptance.mjs`·`acceptance-integrity.mjs` 설계를 옮겨 온 것입니다. hyperfusion 자체는 더 쓰지 않습니다(v2 9단계).
 
 - 저장소: https://github.com/prentice7725/hyperfusion
 - 라이선스: MIT License, Copyright (c) 2026 prentice7725

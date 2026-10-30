@@ -1,13 +1,14 @@
 {
   "name": "hf-game-studio",
   "version": "0.1.0",
-  "description": "멀티 모델 게임 개발 스튜디오. Claude가 리드, 전문가 모델은 읽기 전용(v2 전환 중, hyperfusion 경로는 과도기)",
+  "description": "멀티 모델 게임 개발 스튜디오. Claude가 리드이자 주 구현자, 전문가 모델(Argon, asset-pipeline, Codex)은 읽기 전용",
   "type": "module",
   "license": "MIT",
   "engines": {"node": ">=22"},
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "brief": "node scripts/brief.mjs",
+    "task": "node scripts/task.mjs",
+    "consult": "node scripts/consult.mjs",
     "setup": "node scripts/setup.mjs"
   }
 }
