@@ -43,7 +43,7 @@ docs/design/               설계 문서
 
 ## 설치
 
-필요한 것: Node.js 22 이상, 첫 커밋이 있는 Git 저장소. 전문가는 쓸 것만: `codex`(리뷰), `agy`(Argon 글쓰기), asset-pipeline MCP(이미지·효과음), Playwright(스크린샷 검사를 쓰는 저장소에 `npm i -D playwright`).
+필요한 것: Node.js 24 이상, 첫 커밋이 있는 Git 저장소. 전문가는 쓸 것만: `codex`(리뷰), `agy`(Argon 글쓰기), asset-pipeline MCP(이미지·효과음), Playwright(스크린샷 검사를 쓰는 저장소에 `npm i -D playwright`).
 
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
@@ -142,7 +142,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 npm test
 ```
 
-`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 22와 24에서 돕니다.
+`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 24에서 돕니다.
 
 ## 라이선스
 

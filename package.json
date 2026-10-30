@@ -4,7 +4,7 @@
   "description": "멀티 모델 게임 개발 스튜디오. Claude가 리드이자 주 구현자, 전문가 모델(Argon, asset-pipeline, Codex)은 읽기 전용",
   "type": "module",
   "license": "MIT",
-  "engines": {"node": ">=22"},
+  "engines": {"node": ">=24"},
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "task": "node scripts/task.mjs",
