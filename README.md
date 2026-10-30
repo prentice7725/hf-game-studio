@@ -25,7 +25,7 @@ scripts/
   setup.mjs                게임 저장소에 레이어 설치
 tools/                     게임 저장소의 tools/hfgs/로 복사되는 수용 검사 도구
   validate-data.mjs        JSON 데이터 스키마 검사(대사 그래프 참조 검사 포함)
-  check-assets.mjs         PNG 크기·투명도·용량 검사
+  check-assets.mjs         PNG 크기·투명도·용량, WAV 길이·채널·샘플레이트·용량 검사
   screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
 skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
@@ -45,6 +45,7 @@ hyperfusion의 `task_kind`는 `code, ui, image-asset, tests, refactor, docs` 6�
 | economy-data | code / medium | economy-designer | 스키마(필수) | Sonnet |
 | level | code | level-designer | 스키마(`schema` 있을 때) | 난이도별 |
 | image-asset | image-asset | technical-artist | 매니페스트 규격(필수) | Grok |
+| sfx | image-asset | sound-designer | 매니페스트 규격(필수), asset_pipeline 필수 | Luna |
 | ui | ui | ui-programmer | 스크린샷(`screenshot` 있을 때) | Antigravity (Gemini Argon) |
 | gameplay-code, tests, refactor | 같은 이름 | gameplay-programmer | - | 난이도별 |
 
@@ -179,10 +180,10 @@ hyperfusion은 일꾼 프로세스가 **모두 끝난 뒤에** 수용 검사를 
 ## 주의
 
 - **Grok 이미지 생성은 검증되지 않았습니다.** hyperfusion 테스트의 CLI는 가짜라 실제 이미지 생성과 저장은 확인되지 않았습니다. 애셋 작업 전에 Grok으로 이미지 한 장을 실제 저장까지 해 보세요.
-- **asset-pipeline 연동.** [asset-pipeline](https://github.com/prentice7725/asset-pipeline)의 MCP 서버를 Codex(`~/.codex/config.toml`의 `[mcp_servers.asset_pipeline]`)에 등록해 두면, image-asset brief에 `"asset_pipeline": {"project_id": "<게임 id>"}`를 넣어 Luna가 그 서버로 생성하게 할 수 있습니다(예: `examples/briefs/merc-portrait-pipeline.json`). 컴파일러가 생성 절차·재시도 금지·run_id 보고를 제약으로 넣고, `init ... --executor luna`로 배치하라고 경고합니다. Claude 일꾼은 hyperfusion이 MCP를 막고, Grok·Antigravity에는 이 서버가 없습니다. 결과는 asset-pipeline에서도 REVIEW_REQUIRED 후보이므로 사람 승인 규칙은 그대로입니다.
+- **asset-pipeline 연동.** [asset-pipeline](https://github.com/prentice7725/asset-pipeline)의 MCP 서버를 Codex(`~/.codex/config.toml`의 `[mcp_servers.asset_pipeline]`)에 등록해 두면, image-asset·sfx brief에 `"asset_pipeline": {"project_id": "<게임 id>", "output_class": "<종류>"}`를 넣어 Luna가 그 서버로 생성하게 할 수 있습니다. `output_class`는 image-asset이면 `NONPIXEL_IMAGE`·`PIXEL_STATIC`, sfx면 `SFX`이고, SFX는 `duration_seconds`로 길이를 줄 수 있습니다(예: `examples/briefs/merc-portrait-pipeline.json`, `examples/briefs/sword-swing-sfx.json`). 컴파일러가 생성 절차·재시도 금지·끝날 때까지 기다리기(`STARTING`·`RUNNING`)·run_id 보고를 제약으로 넣고, `init ... --executor luna`로 배치하라고 경고합니다. Claude 일꾼은 hyperfusion이 MCP를 막고, Grok·Antigravity에는 이 서버가 없습니다. 결과는 asset-pipeline에서도 REVIEW_REQUIRED 후보이므로 사람 승인 규칙은 그대로입니다. `PIXEL_STATIC`은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉬워 컴파일 때 경고합니다.
 - **이미지는 사람 승인까지 필요합니다.** `check-assets.mjs`는 크기·투명도·용량만 봅니다. 화풍과 캐릭터 일관성은 리뷰와 사람 승인으로 확인하고, 승인 전에는 아틀라스에 넣지 않습니다.
 - **Antigravity 모델 고정.** 프리셋은 `executors.antigravity.model`을 `gemini-4-argon`(+ `reasoning_effort: high` → `gemini-4-argon-high`)으로 둡니다. 설치된 `agy`가 `--model`을 지원하지 않거나 `agy models`에 그 모델이 없으면 hyperfusion이 Antigravity를 미설치로 보고 건너뜁니다. setup-doctor로 확인하세요.
-- **오디오 생성 일꾼은 없습니다.** 오디오는 사양서(gdd)로만 다룹니다.
+- **오디오는 효과음만 생성합니다.** 효과음(sfx)은 asset-pipeline을 쓰는 Luna만 만들 수 있어 asset_pipeline이 필수입니다. hyperfusion에는 오디오 종류가 없어 image-asset으로 내립니다. 음악·음성 생성 일꾼은 없으므로 사양서(gdd)로만 다룹니다. 효과음도 귀로 듣는 사람 승인이 필요합니다.
 - **스팀 출시.** AI 생성 콘텐츠 공개 의무와 각 생성 서비스의 상업적 이용 조건을 확인하세요(`design/art-bible.md`에 기록란이 있습니다).
 - **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 저장소 안에 쓰면 hyperfusion이 트리 변경으로 봅니다. 서버 종료는 Linux·macOS에서 프로세스 그룹 단위로 테스트했고, Windows(`taskkill /T`)는 테스트하지 않았습니다.
 

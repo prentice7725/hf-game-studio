@@ -1,6 +1,7 @@
 {
   "assets": [
     {"file": "assets/portraits/merc-ash.png", "width": 256, "height": 256, "alpha": true, "max_kb": 512},
-    {"file": "assets/sprites/merc-ash-idle.png", "width": 128, "height": 128, "alpha": true, "max_kb": 128}
+    {"file": "assets/sprites/merc-ash-idle.png", "width": 128, "height": 128, "alpha": true, "max_kb": 128},
+    {"file": "assets/sfx/sword-swing.wav", "min_seconds": 1, "max_seconds": 2, "channels": 2, "sample_rate": 44100, "max_kb": 512}
   ]
 }
