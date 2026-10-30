@@ -17,7 +17,8 @@ export const binary=(env=process.env)=>env.HFGS_CODEX_BIN||'codex';
 export const requiredFlags=['--sandbox','--output-schema','--cd','--json'];
 export const probe=()=>{
  const cli=probeCli('Codex',binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],auth});
- return {...cli,mcp_off_args:mcpOffArgs(cli)};
+ return {...cli,mcp_off_args:mcpOffArgs(cli),
+  warnings:process.env[ALLOW_MCP_ENV]==='1'?[`${ALLOW_MCP_ENV}=1: Codex의 MCP 서버를 끄지 않고 실행함. 리뷰어가 asset_pipeline 같은 쓰기 도구를 부를 수 있음`]:[]};
 };
 
 // MCP 도구는 read-only 샌드박스 밖에서 돈다. 사용자 설정의 asset_pipeline 같은 서버가 켜져 있으면 리뷰어가 애셋을 만들 수 있다.

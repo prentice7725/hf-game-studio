@@ -7,7 +7,7 @@
 //   stats   리뷰어별로 쓸모 있는 지적 비율을 본다.
 //
 // 사용법:
-//   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok]
+//   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok] [--author-model M]
 //        [--criteria "AC1: ..."]... [--criteria-file F] [--check "<명령>"]... [--model M] [--effort E]
 //   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok] [--model M] [--effort E]
 //   node scripts/consult.mjs dispose <report.json> F1=act "F2=dismissed:이유" ...
@@ -38,11 +38,15 @@ export function familyOf(who,model){
 }
 
 // 전문가가 저장소를 바꾸지 않았는지 전후로 비교한다. 각 CLI의 읽기 전용 모드는 보증이 아니다(agy --sandbox는 쓰기 도구를 못 막는다).
-export function snapshot(repo,{git=gitOut}={}){
- const head=git(repo,['rev-parse','HEAD']).trim();
- const status=git(repo,['status','--porcelain=v1','-uall']);
- const diff=git(repo,['diff','--binary','HEAD']);
- return crypto.createHash('sha256').update(head+'\0'+status+'\0'+diff).digest('hex');
+// git diff는 추적되지 않은 파일의 내용을 담지 않으므로, 이미 있던 새 파일을 고쳐도 status·diff가 같다. 그 파일들은 내용까지 해시한다.
+export function snapshot(repo,{git=gitOut,read=f=>fs.readFileSync(f)}={}){
+ const hash=crypto.createHash('sha256');
+ hash.update(git(repo,['rev-parse','HEAD']).trim()+'\0'+git(repo,['status','--porcelain=v1','-uall'])+'\0'+git(repo,['diff','--binary','HEAD']));
+ for(const f of git(repo,['ls-files','--others','--exclude-standard']).split(/\r?\n/).filter(Boolean)){
+  let body;try{body=read(path.join(repo,f));}catch{body=Buffer.from('\0missing');}
+  hash.update('\0'+f+'\0').update(body);
+ }
+ return hash.digest('hex');
 }
 function gitOut(repo,args){
  const r=spawnSync('git',['-C',repo,...args],{encoding:'utf8',maxBuffer:256*1024*1024,windowsHide:true});
@@ -110,7 +114,7 @@ function guarded(repo,run,{git=gitOut}={}){
  return out;
 }
 
-export function review({repo,base,reviewer='codex',author='claude',criteria=[],checks:commands=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
+export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
  const adapter=ADAPTERS[reviewer];
  if(!adapter)fail(`알 수 없는 리뷰어: ${reviewer} (가능: ${Object.keys(ADAPTERS).join(', ')})`);
  if(!criteria.length)fail('성공 기준이 필요함: --criteria "AC1: ..." 또는 --criteria-file');
@@ -118,14 +122,18 @@ export function review({repo,base,reviewer='codex',author='claude',criteria=[],c
  if(noId)fail(`성공 기준은 "AC1: ..."처럼 ID로 시작해야 함: ${noId}`);
  const options={...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{})};
  const reviewerModel=model??adapter.DEFAULT_MODEL??null;
- if(familyOf(author)===familyOf(reviewer,reviewerModel))fail(`리뷰어(${reviewer}${reviewerModel?' '+reviewerModel:''})가 작성자(${author})와 같은 계열: 다른 계열을 고를 것`);
+ // agy는 Gemini도 Claude도 돌릴 수 있어 CLI 이름만으로는 작성자 계열을 알 수 없다.
+ if(author==='agy'&&!authorModel)fail('작성자가 agy면 --author-model로 작성한 모델을 적을 것(agy는 Gemini와 Claude를 모두 돌린다)');
+ const authorFamily=familyOf(author,authorModel);
+ if(!authorFamily)fail(`작성자 계열을 알 수 없음: ${author}${authorModel?' '+authorModel:''}`);
+ if(authorFamily===familyOf(reviewer,reviewerModel))fail(`리뷰어(${reviewer}${reviewerModel?' '+reviewerModel:''})가 작성자(${author}${authorModel?' '+authorModel:''})와 같은 계열: 다른 계열을 고를 것`);
  const {diff,changed,untracked}=changes(repo,base,git);
  if(!diff.trim()&&!untracked.length)fail(`${base} 이후 바뀐 것이 없음`);
  const checks=runChecks(repo,commands,{spawn});
  const prompt=reviewPrompt({criteria,base,diff,untracked,changed,checks,reviewer});
  const r=guarded(repo,()=>invoke(adapter,{repo,prompt,schema:REVIEW_SCHEMA,options}),{git});
  const {verdict,advisory}=judge(r.result);
- const report={kind:'review',created_at:new Date().toISOString(),repo,base,head:git(repo,['rev-parse','HEAD']).trim(),adapter:reviewer,model:reviewerModel,author,
+ const report={kind:'review',created_at:new Date().toISOString(),repo,base,head:git(repo,['rev-parse','HEAD']).trim(),adapter:reviewer,model:reviewerModel,author,author_model:authorModel??null,
   criteria,checks,verdict,advisory,summary:r.result.summary,confidence:r.result.confidence,blocking_criteria:r.result.blocking_criteria,
   findings:r.result.findings.map((f,i)=>({id:`F${i+1}`,...f})),session_id:r.session_id??null,redacted:r.redacted};
  return {report,file:saveReport(report,dir),warnings:r.warnings??[]};
@@ -230,7 +238,7 @@ async function main(){
  if(cmd==='review'){
   if(!a.base)fail('--base <ref> 필요(예: main)');
   const criteria=[...a.criteria,...(a.criteria_file?fs.readFileSync(a.criteria_file,'utf8').split(/\r?\n/).filter(l=>/^AC\d+:/.test(l.trim())).map(l=>l.trim()):[])];
-  const {report,file,warnings}=review({repo,base:a.base,reviewer:a.reviewer,author:a.author,criteria,checks:a.check,model:a.model,effort:a.effort});
+  const {report,file,warnings}=review({repo,base:a.base,reviewer:a.reviewer,author:a.author,authorModel:a.author_model,criteria,checks:a.check,model:a.model,effort:a.effort});
   print(report,file,warnings);
   return report.verdict==='pass'?0:1;
  }

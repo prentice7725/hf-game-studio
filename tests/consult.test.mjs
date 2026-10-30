@@ -117,3 +117,18 @@ test('dispose와 stats: 기각에는 이유가 필요하고, 쓸모 있는 지�
  const [row]=stats([d,{kind:'write'}]);
  assert.deepEqual(row,{reviewer:'codex gpt-6.1-sol',reports:1,findings:3,disposed:3,actionable:2,actionable_rate:0.67});
 });
+
+test('review: 이미 있던 새 파일을 고쳐도 저장소가 바뀐 것으로 본다',()=>{
+ const dir=repo();
+ const invoke=()=>{fs.writeFileSync(path.join(dir,'b.js'),'export const mp=99;\n');return {result:ok};};
+ assert.throws(()=>review({repo:dir,base:'HEAD',criteria:['AC1: x']},{invoke,dir:tmp()}),/저장소가 바뀜/);
+});
+
+test('review: 작성자 모델로 계열을 판단하고, agy 작성자는 모델이 필요하다',()=>{
+ const dir=repo(),invoke=()=>({result:ok});
+ assert.throws(()=>review({repo:dir,base:'HEAD',author:'agy',reviewer:'agy',model:'claude-opus-5-5',criteria:['AC1: x']},{invoke}),/--author-model/);
+ assert.throws(()=>review({repo:dir,base:'HEAD',author:'agy',authorModel:'claude-sonnet-5-5',reviewer:'agy',model:'claude-opus-5-5',criteria:['AC1: x']},{invoke}),/같은 계열/);
+ assert.throws(()=>review({repo:dir,base:'HEAD',author:'someone',criteria:['AC1: x']},{invoke}),/계열을 알 수 없음/);
+ const {report}=review({repo:dir,base:'HEAD',author:'agy',authorModel:'claude-sonnet-5-5',reviewer:'codex',criteria:['AC1: x']},{invoke,dir:tmp()});
+ assert.equal(report.author_model,'claude-sonnet-5-5');
+});
