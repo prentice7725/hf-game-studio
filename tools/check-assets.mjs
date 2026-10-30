@@ -37,7 +37,7 @@ export function checkAsset(spec,read=f=>fs.readFileSync(f)){
  return errors;
 }
 
-if(import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const args=process.argv.slice(2),manifestFile=args[0],only=[];
  for(let i=1;i<args.length;i++){if(args[i]==='--only'&&args[i+1])only.push(args[++i]);else{console.error(`알 수 없는 인자: ${args[i]}`);process.exit(2);}}
  if(!manifestFile){console.error('사용법: check-assets.mjs <매니페스트.json> [--only <파일>]');process.exit(2);}

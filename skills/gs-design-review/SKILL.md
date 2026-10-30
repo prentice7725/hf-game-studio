@@ -8,6 +8,11 @@ argument-hint: "[문서 경로] [섹션 이름]"
 Claude-Code-Game-Studios의 `design-review` 스킬을 hf-game-studio용으로 줄인 것이다(MIT, NOTICE.md 참고).
 읽기 전용이다. 고칠 일은 hyperfusion 작업(gdd, lore)으로 넘긴다.
 
+## 문서 읽기
+
+설계 문서는 통째로 읽지 않는다. 먼저 `grep -n '^#' <문서>`로 제목과 줄 번호를 보고, 필요한 섹션의 줄 범위만 Read의 offset/limit으로 읽는다. 문서가 커질수록 통째 읽기는 토큰을 크게 쓰고, Read 한도(약 2.5만 토큰)를 넘으면 실패한다(원본 템플릿 이슈 #64, #136).
+인자로 섹션 이름을 받았으면 그 섹션만 본다. 용어집·세계관은 점검 중 나온 고유 명사를 `grep`으로 찾아 확인한다.
+
 ## 점검 항목
 
 인자로 받은 문서(없으면 `design/gdd.md`)의 각 규칙·섹션에 대해:

@@ -115,7 +115,7 @@ function readJson(file){
  catch(e){throw Error(e.code==='ENOENT'?`파일 없음: ${file}`:`JSON을 읽을 수 없음: ${file}: ${e.message}`);}
 }
 
-if(import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const args=process.argv.slice(2),positional=[],expects=[];
  try{
   for(let i=0;i<args.length;i++){
