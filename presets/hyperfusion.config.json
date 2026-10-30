@@ -1,0 +1,40 @@
+{
+  "lead": "opus",
+  "lead_takeover": true,
+  "external": {
+    "default": "auto",
+    "available": ["grok", "antigravity", "sonnet", "haiku", "luna"]
+  },
+  "executors": {
+    "antigravity": {"model": "gemini-4-argon", "reasoning_effort": "high", "sandbox": true},
+    "grok": {"reasoning_effort": "medium"},
+    "sonnet": {"reasoning_effort": "high"},
+    "haiku": {"reasoning_effort": "max"},
+    "luna": {"model": "gpt-6-luna", "reasoning_effort": "xhigh"},
+    "sol": {"model": "gpt-6.1-sol", "reasoning_effort": "medium"}
+  },
+  "routing": {
+    "learn": true,
+    "min_samples": 3,
+    "demote_below": 0.4,
+    "half_life_days": 90,
+    "explore_every": 10,
+    "newcomer_every": 4,
+    "rules": [
+      {"kind": "image-asset", "executors": ["grok", "luna"]},
+      {"kind": "docs", "executors": ["antigravity", "sonnet", "haiku", "grok"]},
+      {"kind": "ui", "executors": ["antigravity", "sonnet", "grok"]},
+      {"kind": "code", "difficulty": ["medium", "high"], "executors": ["sonnet", "grok", "antigravity"]},
+      {"kind": "code", "difficulty": ["low"], "executors": ["luna", "grok", "haiku", "antigravity", "sonnet"]},
+      {"kind": "tests", "executors": ["sonnet", "grok", "antigravity"]},
+      {"kind": "refactor", "executors": ["sonnet", "antigravity", "grok"]},
+      {"executors": ["sonnet", "grok", "antigravity"]}
+    ]
+  },
+  "review": {
+    "by": "lead",
+    "reviewers": ["sol", "sonnet", "antigravity", "grok", "luna", "haiku"],
+    "auto_apply": true
+  },
+  "limits": {}
+}

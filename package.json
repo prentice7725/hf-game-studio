@@ -1,0 +1,13 @@
+{
+  "name": "hf-game-studio",
+  "version": "0.1.0",
+  "description": "HyperFusion 위에 올리는 멀티 모델 게임 개발 레이어",
+  "type": "module",
+  "license": "MIT",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "brief": "node scripts/brief.mjs",
+    "setup": "node scripts/setup.mjs"
+  }
+}

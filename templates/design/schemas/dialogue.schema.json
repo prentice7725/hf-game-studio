@@ -1,0 +1,39 @@
+{
+  "$comment": "대사 그래프 형식. 선택지의 next는 반드시 존재하는 노드 id여야 한다(x-ref).",
+  "type": "object",
+  "required": ["id", "start", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "start": {"type": "string", "x-ref": "/nodes/*/id"},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "x-uniqueBy": "id",
+      "items": {
+        "type": "object",
+        "required": ["id", "speaker", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "speaker": {"type": "string", "minLength": 1},
+          "text": {"type": "string", "minLength": 1, "maxLength": 40},
+          "next": {"type": "string", "x-ref": "/nodes/*/id"},
+          "choices": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "type": "object",
+              "required": ["text", "next"],
+              "additionalProperties": false,
+              "properties": {
+                "text": {"type": "string", "minLength": 1, "maxLength": 30},
+                "next": {"type": "string", "x-ref": "/nodes/*/id"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "task_id": "M1-T4-contract-board",
+  "game_kind": "ui",
+  "difficulty": "medium",
+  "objective": "Build the contract board screen that lists contracts from data/contracts.json and lets the player assign Ash to one.",
+  "scope": {"paths": ["src/ui/contract-board.js", "src/ui/contract-board.css", "index.html"]},
+  "screenshot": {"url": "http://localhost:5173", "selector": "#contract-board", "expect_text": "곡물 수레 호위"},
+  "success_criteria": [
+    "AC1: the contract board renders without console errors and shows the grain cart contract title",
+    "AC2: selecting the contract and pressing assign shows the success chance computed by src/rules/contract.js"
+  ],
+  "acceptance_map": {"AC1": ["@auto"]},
+  "constraints": ["Start the dev server with npm run dev before running the screenshot check."]
+}

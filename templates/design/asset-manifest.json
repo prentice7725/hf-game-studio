@@ -1,0 +1,6 @@
+{
+  "assets": [
+    {"file": "assets/portraits/merc-ash.png", "width": 256, "height": 256, "alpha": true, "max_kb": 512},
+    {"file": "assets/sprites/merc-ash-idle.png", "width": 128, "height": 128, "alpha": true, "max_kb": 128}
+  ]
+}

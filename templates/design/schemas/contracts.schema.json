@@ -1,0 +1,28 @@
+{
+  "$comment": "계약 데이터 형식. difficulty와 reward의 관계는 GDD 수치 섹션의 공식을 따른다.",
+  "type": "object",
+  "required": ["version", "contracts"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "minimum": 1},
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "x-uniqueBy": "id",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "difficulty", "reward", "days", "check"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 30},
+          "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+          "reward": {"type": "integer", "minimum": 1},
+          "days": {"type": "integer", "minimum": 1, "maximum": 30},
+          "check": {"type": "string", "enum": ["might", "wits", "grit"]},
+          "intro_dialogue": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+        }
+      }
+    }
+  }
+}
