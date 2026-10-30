@@ -1,8 +1,24 @@
 {
-  "$comment": "대사 그래프 형식. 선택지의 next는 반드시 존재하는 노드 id여야 한다(x-ref).",
+  "$comment": "대사 그래프 형식(엔진 중립 원본). Dialogic 2 타임라인(.dtl) 이벤트에 1:1로 대응하는 범위만 쓴다: 노드=label, speaker/portrait/text=text 이벤트, enter=join(대사 앞), exit=leave(대사 뒤, 선택지와 함께 못 씀), set=set, choices=choice(+if 조건), next=jump, 끝=end_timeline. 변환은 tools/hfgs/dialogue-to-dtl.mjs. speaker와 등장인물은 용어집 ID이고 Dialogic 캐릭터 파일(.dch) 이름과 같아야 한다. 대사에는 Dialogic 문법 기호([ ] { } < >)를 쓰지 않는다. 선택지의 next는 반드시 존재하는 노드 id여야 한다(x-ref).",
   "type": "object",
   "required": ["id", "start", "nodes"],
   "additionalProperties": false,
+  "$defs": {
+    "characterId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "portrait": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "variable": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"},
+    "value": {"type": ["integer", "number", "boolean", "string"]},
+    "condition": {
+      "type": "object",
+      "required": ["var", "op", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "var": {"$ref": "#/$defs/variable"},
+        "op": {"enum": ["==", "!=", ">", ">=", "<", "<="]},
+        "value": {"$ref": "#/$defs/value"}
+      }
+    }
+  },
   "properties": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
     "start": {"type": "string", "x-ref": "/nodes/*/id"},
@@ -12,23 +28,53 @@
       "x-uniqueBy": "id",
       "items": {
         "type": "object",
-        "required": ["id", "speaker", "text"],
+        "required": ["id", "text"],
         "additionalProperties": false,
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
-          "speaker": {"type": "string", "minLength": 1},
-          "text": {"type": "string", "minLength": 1, "maxLength": 40},
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+          "speaker": {"$ref": "#/$defs/characterId", "$comment": "없으면 서술(내레이션)"},
+          "portrait": {"$ref": "#/$defs/portrait"},
+          "text": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^\\[\\]{}<>\\n\\r]*$"},
+          "enter": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["character"],
+              "additionalProperties": false,
+              "properties": {
+                "character": {"$ref": "#/$defs/characterId"},
+                "portrait": {"$ref": "#/$defs/portrait"},
+                "position": {"type": "string", "pattern": "^[a-z0-9_-]+$"}
+              }
+            }
+          },
+          "exit": {"type": "array", "items": {"$ref": "#/$defs/characterId"}},
+          "set": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["var", "op", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "var": {"$ref": "#/$defs/variable"},
+                "op": {"enum": ["=", "+=", "-=", "*=", "/="]},
+                "value": {"$ref": "#/$defs/value"}
+              }
+            }
+          },
           "next": {"type": "string", "x-ref": "/nodes/*/id"},
           "choices": {
             "type": "array",
+            "minItems": 1,
             "maxItems": 4,
             "items": {
               "type": "object",
               "required": ["text", "next"],
               "additionalProperties": false,
               "properties": {
-                "text": {"type": "string", "minLength": 1, "maxLength": 30},
-                "next": {"type": "string", "x-ref": "/nodes/*/id"}
+                "text": {"type": "string", "minLength": 1, "maxLength": 30, "pattern": "^[^\\[\\]{}<>|\\n\\r]*$"},
+                "next": {"type": "string", "x-ref": "/nodes/*/id"},
+                "if": {"$ref": "#/$defs/condition"}
               }
             }
           }
