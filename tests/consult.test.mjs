@@ -132,3 +132,13 @@ test('review: 작성자 모델로 계열을 판단하고, agy 작성자는 모�
  const {report}=review({repo:dir,base:'HEAD',author:'agy',authorModel:'claude-sonnet-5-5',reviewer:'codex',criteria:['AC1: x']},{invoke,dir:tmp()});
  assert.equal(report.author_model,'claude-sonnet-5-5');
 });
+
+test('review: 한글 이름의 새 파일도 내용까지 비교하고 목록에 실제 이름으로 넣는다',()=>{
+ const dir=repo(),seen={};
+ fs.writeFileSync(path.join(dir,'대사.json'),'{"a":1}\n');
+ const capture=(adapter,{prompt})=>{seen.untracked=JSON.parse(prompt).untracked_new_files;return {result:ok};};
+ review({repo:dir,base:'HEAD',criteria:['AC1: x']},{invoke:capture,dir:tmp()});
+ assert.ok(seen.untracked.includes('대사.json'));
+ const invoke=()=>{fs.writeFileSync(path.join(dir,'대사.json'),'{"a":2}\n');return {result:ok};};
+ assert.throws(()=>review({repo:dir,base:'HEAD',criteria:['AC1: x']},{invoke,dir:tmp()}),/저장소가 바뀜/);
+});

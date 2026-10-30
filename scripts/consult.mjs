@@ -42,12 +42,16 @@ export function familyOf(who,model){
 export function snapshot(repo,{git=gitOut,read=f=>fs.readFileSync(f)}={}){
  const hash=crypto.createHash('sha256');
  hash.update(git(repo,['rev-parse','HEAD']).trim()+'\0'+git(repo,['status','--porcelain=v1','-uall'])+'\0'+git(repo,['diff','--binary','HEAD']));
- for(const f of git(repo,['ls-files','--others','--exclude-standard']).split(/\r?\n/).filter(Boolean)){
-  let body;try{body=read(path.join(repo,f));}catch{body=Buffer.from('\0missing');}
+ for(const f of untrackedFiles(repo,git)){
+  let body;
+  try{body=read(path.join(repo,f));}catch(e){fail(`작업 트리 비교 중 새 파일을 읽지 못함: ${f} (${e.code??e.message})`);}
   hash.update('\0'+f+'\0').update(body);
  }
  return hash.digest('hex');
 }
+// -z로 받는다. 기본 설정(core.quotePath)은 한글 같은 비ASCII 파일명을 따옴표와 8진수 이스케이프로 내보내 실제 경로로 쓸 수 없다.
+const nulList=text=>text.split('\0').filter(Boolean);
+const untrackedFiles=(repo,git)=>nulList(git(repo,['ls-files','-z','--others','--exclude-standard']));
 function gitOut(repo,args){
  const r=spawnSync('git',['-C',repo,...args],{encoding:'utf8',maxBuffer:256*1024*1024,windowsHide:true});
  if(r.status!==0)fail(`git ${args.join(' ')} 실패: ${String(r.stderr).trim()}`);
@@ -93,8 +97,8 @@ export function judge(result){
 
 function changes(repo,base,git){
  const diff=git(repo,['diff','--no-color',base]);
- const changed=git(repo,['diff','--name-only',base]).split(/\r?\n/).filter(Boolean);
- const untracked=git(repo,['ls-files','--others','--exclude-standard']).split(/\r?\n/).filter(Boolean);
+ const changed=nulList(git(repo,['diff','-z','--name-only',base]));
+ const untracked=untrackedFiles(repo,git);
  return {diff,changed,untracked};
 }
 

@@ -51,6 +51,15 @@ hyperfusion의 task_kind는 6종으로 고정이라 지표(실적)는 task_kind 
 - **게이트는 hyperfusion 것 하나.** 원본 템플릿(Claude-Code-Game-Studios)의 디렉터 게이트·GDD 섹션 강제는 가져오지 않았다. 승인·체크포인트는 hyperfusion 프로젝트(`project.mjs`)로만 한다.
 - **작게 시작.** 첫 프로젝트는 `$HFGS/examples/PLAN.json`처럼 용병 1명 + 계약 1개 + 화면 1개 크기로 한 마일스톤만 돌린다.
 
+## 전문가 호출(consult)
+
+다른 계열 모델을 읽기 전용 전문가로 부른다. 전문가는 파일을 고치지 않고 결과를 JSON으로 돌려주며, 파일은 리드가 쓴다. 호출 전후로 작업 트리(추적되지 않은 파일 내용 포함)를 비교해 바뀌었으면 답을 버린다. 보고서는 `~/.hf-game-studio/reviews/`(HFGS_HOME으로 변경)에 남는다.
+
+- **리뷰:** `node $HFGS/scripts/consult.mjs review --base main --criteria "AC1: ..." --check "npm test"`. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 리뷰어에게는 작성자의 요약·주장을 주지 않고 diff, 새 파일 목록, 스크립트가 직접 돌린 `--check` 결과만 준다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1이다. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다.
+- **처분:** 리뷰 지적마다 `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`로 처분을 남긴다(act, consider, noted, dismissed, contract_misread). 기각과 계약 오독에는 이유가 필요하다. `consult.mjs stats`가 리뷰어별로 쓸모 있는 지적 비율을 보여 준다.
+- **글쓰기:** `consult.mjs write <write-brief.json> --repo <게임 저장소>`. 기본 작가는 Gemini Argon(high)이다. brief에는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `context_docs`, `context_sections`를 적는다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 새 용어는 용어집에 넣을지 리드가 정한다. agy는 한 번에 2분 정도 걸린다.
+- **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
+
 ## 검토 스킬
 
 setup이 게임 저장소에 까는 리드용 스킬이다. 리드나 리뷰 단계에서 직접 쓴다(일꾼에게 넘기지 않는다).
