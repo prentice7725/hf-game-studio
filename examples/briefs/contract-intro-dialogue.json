@@ -2,12 +2,22 @@
   "task_id": "M1-T2-contract-intro",
   "game_kind": "narrative",
   "objective": "Write the intro dialogue for the first contract (the client hires Ash to escort a grain cart) as data/dialogue/contract-grain-cart.json.",
-  "scope": {"paths": ["data/dialogue/contract-grain-cart.json"]},
+  "scope": {
+    "paths": [
+      "data/dialogue/contract-grain-cart.json"
+    ]
+  },
   "schema": "design/schemas/dialogue.schema.json",
   "success_criteria": [
     "AC1: the file validates against design/schemas/dialogue.schema.json (every choice leads to an existing node)",
     "AC2: the dialogue offers accept and refuse choices, every speaker is a glossary ID, and it converts to a Dialogic timeline"
   ],
-  "acceptance_commands": ["node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --check"],
-  "acceptance_map": {"AC1": ["@auto"], "AC2": ["node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --check"]}
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ],
+    "AC2": [
+      "@auto"
+    ]
+  }
 }

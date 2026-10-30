@@ -145,6 +145,14 @@ export function autoAcceptance(input,kind){
   });
   out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expects.flat()].map(quote).join(' '));
  }
+ // 대사: 스키마 검사가 아니라 변환기의 --check를 돌린다. 스키마·그래프 규칙·용어집 인물 ID·Dialogic 변환까지 한 번에 본다.
+ // 용어집은 검사 기준이므로 scope.paths에 있으면 compile()이 거절한다(일꾼이 인물을 등록해 통과시키는 길을 막는다).
+ if(kind.verify==='dialogue'&&input.schema){
+  const files=input.data_files??paths.filter(p=>p.endsWith('.json'));
+  if(!files.length)fail('대사 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
+  if(input.expect!==undefined)fail('expect는 schema 검사 작업(balance-data 등)에만 쓸 수 있음: 대사는 dialogue-to-dtl.mjs --check로 검사한다');
+  out.push(['node',`${TOOLS_DIR}/dialogue-to-dtl.mjs`,...files,'--schema',input.schema,...(input.glossary?['--glossary',input.glossary]:[]),'--check'].map(quote).join(' '));
+ }
  if(kind.verify==='assets'&&input.assets_manifest){
   const files=assetFiles(input);
   out.push(['node',`${TOOLS_DIR}/check-assets.mjs`,input.assets_manifest,...files.flatMap(f=>['--only',f])].map(quote).join(' '));
@@ -182,8 +190,11 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  if(noId)fail(`수용 기준은 "AC1: ..."처럼 ID로 시작해야 함: ${noId}`);
  for(const k of kind.require??[])if(!str(input[k]))fail(`${input.game_kind} 작업에는 ${k}가 필요함`);
  // 검사 기준 파일을 일꾼 범위에 넣으면 일꾼이 검사를 약하게 고쳐 통과시킬 수 있다.
- for(const k of ['schema','assets_manifest'])
+ for(const k of ['schema','assets_manifest','glossary'])
   if(input[k]&&input.scope.paths.includes(input[k]))fail(`${k}(${input[k]})가 scope.paths에 있음: 검사 기준은 일꾼이 고칠 수 없게 범위 밖에 둘 것`);
+ // 대사 검사는 용어집(기본 design/glossary.md)을 기준으로 삼는다. 적지 않았어도 기본 경로가 범위 안이면 같은 문제다.
+ if(kind.verify==='dialogue'&&!input.glossary&&input.scope.paths.includes('design/glossary.md'))
+  fail('design/glossary.md가 scope.paths에 있음: 대사 검사의 용어집은 일꾼이 고칠 수 없게 범위 밖에 둘 것(새 인물은 needs_decision으로 올리게 한다)');
  let pipeline=[];
  if(input.asset_pipeline!==undefined){
   if(!kind.pipeline){
@@ -220,7 +231,7 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  // red-first: hyperfusion은 시작 전 수용 검사가 모두 통과하면 ACCEPTANCE_ALREADY_GREEN으로 거절한다.
  // 이미 있는 파일을 고치는 작업에서 형식 검사만 있으면 처음부터 통과하므로 미리 알린다.
  if(auto.length&&!input.acceptance_commands?.length&&input.acceptance_baseline_green===undefined){
-  const checked=kind.verify==='schema'&&!input.expect?(input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')))
+  const checked=(kind.verify==='schema'&&!input.expect)||kind.verify==='dialogue'?(input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')))
    :kind.verify==='assets'?assetFiles(input):[];
   const existing=checked.filter(f=>fs.existsSync(path.join(repo,f)));
   if(existing.length)warn(`이미 있는 파일(${existing.join(', ')})은 형식 검사가 처음부터 통과해 hyperfusion이 ACCEPTANCE_ALREADY_GREEN으로 거절할 수 있음: `

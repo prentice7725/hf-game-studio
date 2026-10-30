@@ -1,7 +1,10 @@
 # hf-game-studio
 
-**[HyperFusion](https://github.com/prentice7725/hyperfusion) 위에 올리는 멀티 모델 게임 개발 레이어입니다.**
-게임 작업을 각 모델이 잘하는 쪽에 나눠 맡깁니다. 시나리오·대사·UI는 Gemini Argon(Antigravity), 이미지 애셋은 Grok, 수치 데이터와 핵심 구현은 Sonnet이 맡고, 리드(Opus)가 계획·반려·최종 판정을 합니다.
+**멀티 모델 게임 개발 스튜디오입니다.** Claude가 리드이고, 분야마다 잘하는 모델을 전문가로 부릅니다. 시나리오·대사·로어는 Gemini Argon, 이미지·효과음은 asset-pipeline(ComfyUI, Codex, Grok), 코드 리뷰는 작성자와 다른 계열 모델이 맡습니다.
+
+> **v2로 전환 중입니다.** 이 저장소는 [hyperfusion](https://github.com/prentice7725/hyperfusion) 위에 게임 작업 종류를 얹는 얇은 층으로 시작했고, 아래 "hyperfusion 경로"(brief 컴파일 → hyperfusion 일꾼)는 아직 그대로 동작합니다. 2026-10-30에 **hyperfusion 의존을 끊고 Claude가 직접 구현하며 전문가 모델을 읽기 전용으로 부르는 구조**로 방향을 바꿨습니다. 결정 이유, 가져올 것과 버릴 것, 실행 순서는 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있습니다. v2 경로의 도구는 `scripts/consult.mjs`(전문가 호출)와 `tools/dialogue-to-dtl.mjs`(대사 변환)이고, hyperfusion 경로를 걷어 내는 작업(v2 9단계)은 아직 남아 있습니다.
+
+## hyperfusion 경로(과도기)
 
 두 프로젝트를 섞은 포크가 아니라 **레이어로 쌓은 구조**입니다.
 
@@ -46,7 +49,7 @@ hyperfusion의 `task_kind`는 `code, ui, image-asset, tests, refactor, docs` 6�
 | game_kind | task_kind | 역할 | 자동 수용 검사 | 1순위 일꾼(프리셋) |
 |---|---|---|---|---|
 | gdd | docs | game-designer | - | Antigravity (Gemini Argon) |
-| narrative | docs | writer | 스키마(`schema` 있을 때) | Antigravity (Gemini Argon) |
+| narrative | docs | writer | `dialogue-to-dtl.mjs --check`(필수: 스키마·그래프 규칙·용어집 인물·Dialogic 변환) | Antigravity (Gemini Argon) |
 | lore | docs | world-builder | - | Antigravity (Gemini Argon) |
 | balance-data | code / medium | systems-designer | 스키마(필수) | Sonnet |
 | economy-data | code / medium | economy-designer | 스키마(필수) | Sonnet |
@@ -125,7 +128,8 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 | `role` | 역할 덮어쓰기. `null`이면 역할 지시문을 넣지 않음 |
 | `context_docs` | 일꾼이 먼저 읽을 단일 원본 문서. 기본은 `design/` 네 문서 중 있는 것 |
 | `context_sections` | 문서별로 읽을 섹션 제목. `{"design/gdd.md": ["규칙", "수치와 공식"]}`. 아래 "설계 문서 읽기" 참고 |
-| `schema`, `data_files` | 데이터 스키마 검사. `data_files`를 생략하면 `scope.paths`의 `.json` |
+| `schema`, `data_files` | 데이터 스키마 검사. `data_files`를 생략하면 `scope.paths`의 `.json`. narrative에서는 스키마 검사 대신 `dialogue-to-dtl.mjs --check`가 돌아간다 |
+| `glossary` | narrative 전용. 대사 검사의 용어집 경로(기본 `design/glossary.md`). 검사 기준이라 `scope.paths`에 둘 수 없다 |
 | `expect` | 바뀌어야 할 값. `{"/mercenaries/[id=ash]/hire_cost": 120}`처럼 경로와 JSON 값. `[키=값]`은 그 필드가 같은 원소를 고름 |
 | `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 `.png` |
 | `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `serve`, `expect_text`, `name`(선택). 로컬 서버 주소면 `serve`(서버 실행 명령) 필수 |
@@ -137,7 +141,7 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 - 종류별 제약, 역할 지시문, 단일 원본 문서 안내를 `constraints`에 넣습니다. 일꾼 간 통신 언어가 영어라 지시문은 영어입니다.
 - `schema`(+ `expect`), `assets_manifest`, `screenshot`으로 `acceptance_commands`를 만듭니다.
 - 이미 있는 파일을 형식 검사만으로 고치는 작업이면 경고합니다(아래 red-first).
-- 검사 기준 파일(`schema`, `assets_manifest`)이 `scope.paths`에 있으면 거절합니다. 일꾼이 기준을 느슨하게 고쳐 통과하는 것을 막기 위해서입니다.
+- 검사 기준 파일(`schema`, `assets_manifest`, `glossary`)이 `scope.paths`에 있으면 거절합니다. 일꾼이 기준을 느슨하게 고쳐 통과하는 것을 막기 위해서입니다.
 
 ### 설계 문서 읽기: 섹션 단위로
 
