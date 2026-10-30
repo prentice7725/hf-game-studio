@@ -50,20 +50,57 @@ test('image-asset + asset_pipeline: MCP 생성 지시문과 Luna 배치 경고',
  const warnings=[],b=compile(example('merc-portrait-pipeline.json'),{repo:repoWithDocs(),warn:m=>warnings.push(m)});
  assert.equal(b.task_kind,'image-asset');
  assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
- for(const d of pipelineDirectives({project_id:'merc-guild'}))assert.ok(b.constraints.includes(d));
- assert.ok(b.constraints.some(c=>c.includes('project_id "merc-guild"')));
+ const ctx=pipelineDirectives({project_id:'merc-guild',output_class:'NONPIXEL_IMAGE'},{classes:['NONPIXEL_IMAGE']});
+ for(const d of ctx)assert.ok(b.constraints.includes(d));
+ assert.ok(b.constraints.some(c=>c.includes('project_id "merc-guild", requested_output_type "NONPIXEL_IMAGE"')));
  assert.ok(warnings.some(w=>w.includes(`--executor ${PIPELINE_EXECUTOR}`)));
+ assert.ok(!warnings.some(w=>w.includes('Pixel Gate')));
  assert.ok(!('asset_pipeline' in b),'게임 전용 필드는 hyperfusion brief에 남기지 않는다');
  const plain=compile(example('merc-portrait.json'),{repo:repoWithDocs()});
  assert.ok(!plain.constraints.some(c=>c.includes('asset_pipeline')),'필드가 없으면 기존 흐름 그대로');
 });
 
-test('asset_pipeline: image-asset 밖, 잘못된 project_id, 모르는 필드는 거절',()=>{
- const g=example('merc-portrait-pipeline.json');
- assert.throws(()=>compile({...example('merc-data.json'),asset_pipeline:{project_id:'a'}},{repo:repoWithDocs()}),/image-asset 작업에만/);
- assert.throws(()=>compile({...g,asset_pipeline:{project_id:'../x'}},{repo:repoWithDocs()}),/project_id/);
- assert.throws(()=>compile({...g,asset_pipeline:{}},{repo:repoWithDocs()}),/project_id/);
- assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',provider:'grok'}},{repo:repoWithDocs()}),/알 수 없는 필드: provider/);
+test('asset_pipeline 폴링: STARTING과 RUNNING을 모두 기다리고 세션을 열어 둔다',()=>{
+ const poll=pipelineDirectives({project_id:'a',output_class:'NONPIXEL_IMAGE'},{classes:['NONPIXEL_IMAGE']}).find(d=>d.includes('asset_inspect_run until'));
+ assert.match(poll,/no longer STARTING or RUNNING/);
+ assert.match(poll,/Keep this session open/);
+});
+
+test('sfx: asset_pipeline 필수, WAV 매니페스트 검사, 길이 전달',()=>{
+ const warnings=[],b=compile(example('sword-swing-sfx.json'),{repo:repoWithDocs(),warn:m=>warnings.push(m)});
+ assert.equal(b.task_kind,'image-asset');
+ assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/sfx/sword-swing.wav']);
+ assert.deepEqual(b.acceptance_map,{AC1:b.acceptance_commands});
+ assert.ok(b.constraints.some(c=>c.startsWith('Role sound-designer:')));
+ assert.ok(b.constraints.some(c=>c.includes('requested_output_type "SFX", duration_seconds 1.5')));
+ assert.ok(b.constraints.some(c=>c.includes('copy the produced PCM WAV')));
+ assert.ok(warnings.some(w=>w.includes(`--executor ${PIPELINE_EXECUTOR}`)));
+ const {asset_pipeline,...without}=example('sword-swing-sfx.json');
+ assert.throws(()=>compile(without,{repo:repoWithDocs()}),/sfx 작업은 asset_pipeline이 필요함/);
+ const sp=example('sword-swing-sfx.json');
+ assert.throws(()=>compile({...sp,asset_pipeline:{...sp.asset_pipeline,workflow_id:'codex_imagegen',reference_image:'design/refs/merc.png'}},{repo:repoWithDocs()}),/이미지 작업에만/);
+});
+
+test('asset_pipeline: 종류별 output_class만 허용하고 PIXEL_STATIC은 경고',()=>{
+ const g=example('merc-portrait-pipeline.json'),s=example('sword-swing-sfx.json');
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',output_class:'SFX'}},{repo:repoWithDocs()}),/NONPIXEL_IMAGE, PIXEL_STATIC 중 하나: SFX/);
+ assert.throws(()=>compile({...s,asset_pipeline:{project_id:'a',output_class:'NONPIXEL_IMAGE'}},{repo:repoWithDocs()}),/SFX 중 하나/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',output_class:'PIXEL_ANIMATION'}},{repo:repoWithDocs()}),/output_class/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',output_class:'NONPIXEL_IMAGE',duration_seconds:1}},{repo:repoWithDocs()}),/SFX에만/);
+ for(const d of [0,-1,'2',null])
+  assert.throws(()=>compile({...s,asset_pipeline:{...s.asset_pipeline,duration_seconds:d}},{repo:repoWithDocs()}),/0보다 큰/);
+ const warnings=[];
+ compile({...g,asset_pipeline:{project_id:'a',output_class:'PIXEL_STATIC'}},{repo:repoWithDocs(),warn:m=>warnings.push(m)});
+ assert.ok(warnings.some(w=>w.includes('Pixel Gate')));
+});
+
+test('asset_pipeline: 쓸 수 없는 작업, 잘못된 project_id, 모르는 필드는 거절',()=>{
+ const g=example('merc-portrait-pipeline.json'),ok={output_class:'NONPIXEL_IMAGE'};
+ assert.throws(()=>compile({...example('merc-data.json'),asset_pipeline:{project_id:'a',...ok}},{repo:repoWithDocs()}),/image-asset·sfx 작업에만/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'../x',...ok}},{repo:repoWithDocs()}),/project_id/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ok}},{repo:repoWithDocs()}),/project_id/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a'}},{repo:repoWithDocs()}),/output_class/);
+ assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',...ok,provider:'grok'}},{repo:repoWithDocs()}),/알 수 없는 필드: provider/);
  assert.throws(()=>compile({...g,asset_pipeline:'merc-guild'},{repo:repoWithDocs()}),/형식/);
 });
 

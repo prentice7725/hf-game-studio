@@ -63,9 +63,22 @@
       "allowed_actions": ["read", "edit"],
       "verify": "assets",
       "require": ["assets_manifest"],
+      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"]},
       "constraints": [
         "Save only the files listed in the asset manifest, at exactly those paths.",
         "Follow the art bible for palette, outline and camera angle; use the reference images it names."
+      ]
+    },
+    "sfx": {
+      "$comment": "hyperfusion에는 오디오 task_kind가 없어 애셋 생성 칸인 image-asset으로 내린다. 효과음을 만드는 일꾼은 asset-pipeline MCP를 쓰는 Luna뿐이라 asset_pipeline이 필수다.",
+      "task_kind": "image-asset",
+      "role": "sound-designer",
+      "allowed_actions": ["read", "edit"],
+      "verify": "assets",
+      "require": ["assets_manifest"],
+      "pipeline": {"output_classes": ["SFX"], "required": true},
+      "constraints": [
+        "Save only the files listed in the asset manifest, at exactly those paths."
       ]
     },
     "ui": {

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// 이미지 애셋이 매니페스트 규격에 맞는지 검사한다. 생성 모델(Grok 등)의 결과를 사람이 보기 전에 기계적으로 거른다.
+// 이미지·효과음 애셋이 매니페스트 규격에 맞는지 검사한다. 생성 모델(Grok, asset-pipeline 등)의 결과를 사람이 보기 전에 기계적으로 거른다.
 // 사용법: node tools/hfgs/check-assets.mjs <매니페스트.json> [--only <파일 경로> ...]
 // 매니페스트 형식:
-//   {"assets":[{"file":"assets/merc/idle.png","width":128,"height":128,"alpha":true,"max_kb":256}]}
-// PNG만 지원한다. 크기는 IHDR 헤더에서 읽고, 투명도는 색 형식(회색+알파, RGBA) 또는 tRNS 청크로 판단한다.
+//   {"assets":[{"file":"assets/merc/idle.png","width":128,"height":128,"alpha":true,"max_kb":256},
+//              {"file":"assets/sfx/sword.wav","min_seconds":0.5,"max_seconds":2,"channels":2,"sample_rate":44100,"max_kb":512}]}
+// PNG와 WAV(PCM)만 지원한다. PNG는 IHDR 헤더에서 크기를, 색 형식(회색+알파, RGBA) 또는 tRNS 청크로 투명도를 읽는다.
+// WAV는 fmt·data 청크에서 채널·샘플레이트·길이를 읽는다. 소리 품질은 사람이 들어서 확인한다.
 import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 
@@ -24,15 +26,47 @@ export function readPng(buf){
  return {width,height,colorType,alpha};
 }
 
-export function checkAsset(spec,read=f=>fs.readFileSync(f)){
- const errors=[];
- let buf;
- try{buf=read(spec.file);}catch(e){return [e.code==='ENOENT'?'파일 없음':e.message];}
+export function readWav(buf){
+ if(buf.length<12||buf.toString('latin1',0,4)!=='RIFF'||buf.toString('latin1',8,12)!=='WAVE')throw Error('WAV 파일이 아님');
+ let fmt,dataBytes;
+ for(let at=12;at+8<=buf.length;){
+  const type=buf.toString('latin1',at,at+4),len=buf.readUInt32LE(at+4);
+  if(type==='fmt '&&len>=16)fmt={channels:buf.readUInt16LE(at+10),sampleRate:buf.readUInt32LE(at+12),byteRate:buf.readUInt32LE(at+16)};
+  // 길이를 모르고 녹음한 스트림은 data 크기가 0xFFFFFFFF로 남으므로 파일에 실제로 있는 만큼만 센다.
+  if(type==='data'){dataBytes=Math.min(len,buf.length-at-8);break;}
+  at+=8+len+(len&1);
+ }
+ if(!fmt)throw Error('fmt 청크가 없음');
+ if(dataBytes===undefined)throw Error('data 청크가 없음');
+ if(!fmt.byteRate)throw Error('fmt 청크의 byteRate가 0');
+ return {channels:fmt.channels,sampleRate:fmt.sampleRate,seconds:dataBytes/fmt.byteRate};
+}
+
+function checkPng(spec,buf){
  let png;
  try{png=readPng(buf);}catch(e){return [e.message];}
+ const errors=[];
  if(spec.width!==undefined&&png.width!==spec.width)errors.push(`너비 ${png.width}, 기대 ${spec.width}`);
  if(spec.height!==undefined&&png.height!==spec.height)errors.push(`높이 ${png.height}, 기대 ${spec.height}`);
  if(spec.alpha===true&&!png.alpha)errors.push('투명 채널 없음(배경 제거 필요)');
+ return errors;
+}
+
+function checkWav(spec,buf){
+ let wav;
+ try{wav=readWav(buf);}catch(e){return [e.message];}
+ const errors=[];
+ if(spec.min_seconds!==undefined&&wav.seconds<spec.min_seconds)errors.push(`길이 ${wav.seconds.toFixed(2)}초 < ${spec.min_seconds}초`);
+ if(spec.max_seconds!==undefined&&wav.seconds>spec.max_seconds)errors.push(`길이 ${wav.seconds.toFixed(2)}초 > ${spec.max_seconds}초`);
+ if(spec.channels!==undefined&&wav.channels!==spec.channels)errors.push(`채널 ${wav.channels}, 기대 ${spec.channels}`);
+ if(spec.sample_rate!==undefined&&wav.sampleRate!==spec.sample_rate)errors.push(`샘플레이트 ${wav.sampleRate}, 기대 ${spec.sample_rate}`);
+ return errors;
+}
+
+export function checkAsset(spec,read=f=>fs.readFileSync(f)){
+ let buf;
+ try{buf=read(spec.file);}catch(e){return [e.code==='ENOENT'?'파일 없음':e.message];}
+ const errors=spec.file.toLowerCase().endsWith('.wav')?checkWav(spec,buf):checkPng(spec,buf);
  if(spec.max_kb!==undefined&&buf.length>spec.max_kb*1024)errors.push(`용량 ${Math.ceil(buf.length/1024)}KB > ${spec.max_kb}KB`);
  return errors;
 }

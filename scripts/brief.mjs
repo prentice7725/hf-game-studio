@@ -84,20 +84,31 @@ export function docDirectives(docs,picked,{repo,warn}){
 }
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
-// asset_pipeline: 이미지를 asset-pipeline MCP 서버(asset_build_brief → asset_generate → asset_inspect_run)로 만들게 한다.
+// asset_pipeline: 애셋을 asset-pipeline MCP 서버(asset_build_brief → asset_generate → asset_inspect_run)로 만들게 한다.
 // 그 서버를 쓸 수 있는 일꾼은 Codex 설정(~/.codex/config.toml)에 asset_pipeline이 등록된 Luna뿐이다.
 // Claude 일꾼은 hyperfusion이 mcp__*를 막고, Grok·Antigravity에는 등록되어 있지 않다.
+// output_class는 asset-pipeline의 출력 종류다. 어떤 종류를 쓸 수 있는지는 game_kind의 pipeline.output_classes가 정한다.
 // ComfyUI 워크플로는 모두 text-to-image라 참조 이미지 편집은 Codex·Grok CLI provider(codex_imagegen, grok_imagine)로만 된다.
 // 이 provider들은 실험적이고 자동 선택되지 않으므로 workflow_id로 명시한다.
 export const PIPELINE_EXECUTOR='luna';
-export function pipelineDirectives(p,{repo=process.cwd(),scope=[]}={}){
- if(!p||typeof p!=='object'||Array.isArray(p))fail('asset_pipeline은 {"project_id": "..."} 형식');
- const unknown=Object.keys(p).filter(k=>!['project_id','workflow_id','reference_image'].includes(k));
+const PIPELINE_FIELDS=['project_id','output_class','duration_seconds','workflow_id','reference_image'];
+// asset_generate 직후 상태는 STARTING이고, 생성 중에는 RUNNING이다. 둘 다 끝난 상태가 아니다.
+const PIPELINE_PENDING=['STARTING','RUNNING'];
+export function pipelineDirectives(p,{classes=[],repo=process.cwd(),scope=[]}={}){
+ if(!p||typeof p!=='object'||Array.isArray(p))fail('asset_pipeline은 {"project_id": "...", "output_class": "..."} 형식');
+ const unknown=Object.keys(p).filter(k=>!PIPELINE_FIELDS.includes(k));
  if(unknown.length)fail(`asset_pipeline에 알 수 없는 필드: ${unknown.join(', ')}`);
  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(p.project_id??''))fail('asset_pipeline.project_id는 영문·숫자로 시작하고 영문·숫자·_-로 64자 이내');
+ if(!classes.includes(p.output_class))fail(`asset_pipeline.output_class는 ${classes.join(', ')} 중 하나: ${p.output_class}`);
+ const sfx=p.output_class==='SFX';
+ if(p.duration_seconds!==undefined){
+  if(!sfx)fail('asset_pipeline.duration_seconds는 SFX에만 쓸 수 있음');
+  if(typeof p.duration_seconds!=='number'||!(p.duration_seconds>0))fail('asset_pipeline.duration_seconds는 0보다 큰 초 단위 숫자');
+ }
  if(p.workflow_id!==undefined&&!/^[a-z0-9][a-z0-9_]{0,63}$/.test(p.workflow_id))fail('asset_pipeline.workflow_id는 소문자·숫자·_로 된 워크플로 ID(예: codex_imagegen, grok_imagine)');
  let ref;
  if(p.reference_image!==undefined){
+  if(sfx)fail('asset_pipeline.reference_image는 이미지 작업에만 쓸 수 있음');
   if(!str(p.reference_image)||path.isAbsolute(p.reference_image))fail('asset_pipeline.reference_image는 게임 저장소 기준 상대 경로');
   if(!p.workflow_id)fail('asset_pipeline.reference_image에는 workflow_id가 필요: 참조 편집은 codex_imagegen·grok_imagine 같은 CLI provider로만 된다');
   // 일꾼이 참조 이미지를 바꿔치기하지 못하게 범위 밖에 둔다.
@@ -105,15 +116,22 @@ export function pipelineDirectives(p,{repo=process.cwd(),scope=[]}={}){
   ref=path.resolve(repo,p.reference_image);
   if(!fs.existsSync(ref))fail(`asset_pipeline.reference_image가 없음: ${p.reference_image}`);
  }
+ const args=[`project_id "${p.project_id}"`,`requested_output_type "${p.output_class}"`,
+  ...(p.duration_seconds!==undefined?[`duration_seconds ${p.duration_seconds}`]:[]),
+  'reference images and design docs as absolute paths'];
+ const noun=sfx?'sound effects':'images';
  return [
-  `Generate images only through the asset_pipeline MCP tools: asset_build_brief (project_id "${p.project_id}", reference images and design docs as absolute paths) → asset_route → asset_generate → asset_inspect_run. Never draw, synthesize, download or edit images by any other means.`,
+  `Generate ${noun} only through the asset_pipeline MCP tools: asset_build_brief (${args.join(', ')}) → asset_route → asset_generate → asset_inspect_run. Never ${sfx?'synthesize, record, download or edit audio':'draw, synthesize, download or edit images'} by any other means.`,
   ...(p.workflow_id?[`Use workflow "${p.workflow_id}" only: pass workflow_id "${p.workflow_id}" to asset_build_brief, then set workflow_preferences {"id": "${p.workflow_id}", "allow_experimental": true} in the returned brief before asset_route and asset_generate.`]:[]),
   ...(ref?[`Edit from this reference image: pass reference_image "${ref}" to asset_build_brief. Keep the character's identity, silhouette, palette and outfit from it; change only what the objective asks.`]:[]),
   'Call asset_generate once per asset. Do not retry, change provider or workflow, or work around a BLOCKED, UNAVAILABLE or FAILED result: stop and return needs_decision with the tool status and error_code.',
-  'Poll asset_inspect_run until the run leaves RUNNING, then copy the produced image to its manifest path. Only resize or convert format to meet the manifest; do not repaint it.',
+  `Keep this session open and poll asset_inspect_run until its status is no longer ${PIPELINE_PENDING.join(' or ')}; a run left pending when your session ends never completes. Then copy the produced ${sfx?'PCM WAV':'image'} to its manifest path. Only ${sfx?'convert format':'resize or convert format'} to meet the manifest; do not ${sfx?'re-edit':'repaint'} it.`,
   'List every run_id with its final status and review state in remaining_risks. Pipeline output stays a candidate (REVIEW_REQUIRED, game_ready=false) until a human approves it; never claim approval.'
  ];
 }
+
+// 매니페스트 검사 대상: asset_files가 없으면 scope.paths 중 검사 도구가 읽을 수 있는 PNG·WAV.
+const assetFiles=input=>input.asset_files??input.scope.paths.filter(p=>/\.(png|wav)$/i.test(p));
 
 export function autoAcceptance(input,kind){
  const out=[];
@@ -128,7 +146,7 @@ export function autoAcceptance(input,kind){
   out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expects.flat()].map(quote).join(' '));
  }
  if(kind.verify==='assets'&&input.assets_manifest){
-  const files=input.asset_files??paths.filter(p=>p.toLowerCase().endsWith('.png'));
+  const files=assetFiles(input);
   out.push(['node',`${TOOLS_DIR}/check-assets.mjs`,input.assets_manifest,...files.flatMap(f=>['--only',f])].map(quote).join(' '));
  }
  if(kind.verify==='screenshot'&&input.screenshot){
@@ -168,10 +186,16 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
   if(input[k]&&input.scope.paths.includes(input[k]))fail(`${k}(${input[k]})가 scope.paths에 있음: 검사 기준은 일꾼이 고칠 수 없게 범위 밖에 둘 것`);
  let pipeline=[];
  if(input.asset_pipeline!==undefined){
-  if(kind.task_kind!=='image-asset')fail(`asset_pipeline은 image-asset 작업에만 쓸 수 있음: ${input.game_kind}`);
-  pipeline=pipelineDirectives(input.asset_pipeline,{repo,scope:input.scope.paths});
+  if(!kind.pipeline){
+   const ok=Object.entries(table.kinds).filter(([,k])=>k.pipeline).map(([n])=>n);
+   fail(`asset_pipeline은 ${ok.join('·')} 작업에만 쓸 수 있음: ${input.game_kind}`);
+  }
+  pipeline=pipelineDirectives(input.asset_pipeline,{classes:kind.pipeline.output_classes,repo,scope:input.scope.paths});
   warn(`asset_pipeline 작업은 asset_pipeline MCP가 등록된 Codex 일꾼만 할 수 있음: fusion-state.mjs init <저장소> <brief> --executor ${PIPELINE_EXECUTOR}`);
- }
+  // asset-pipeline의 PIXEL_STATIC은 자동 후처리가 투명화뿐이라, 색 수가 한도(기본 32)를 넘는 생성물은 Pixel Gate에서 FAILED가 된다.
+  if(input.asset_pipeline.output_class==='PIXEL_STATIC')
+   warn('PIXEL_STATIC은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉬움: 일꾼은 needs_decision으로 멈춘다');
+ }else if(kind.pipeline?.required)fail(`${input.game_kind} 작업은 asset_pipeline이 필요함: 이 애셋을 만드는 일꾼은 asset-pipeline MCP뿐`);
 
  const role=input.role===undefined?kind.role:input.role;
  const picked=input.context_sections??{};
@@ -197,7 +221,7 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  // 이미 있는 파일을 고치는 작업에서 형식 검사만 있으면 처음부터 통과하므로 미리 알린다.
  if(auto.length&&!input.acceptance_commands?.length&&input.acceptance_baseline_green===undefined){
   const checked=kind.verify==='schema'&&!input.expect?(input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')))
-   :kind.verify==='assets'?(input.asset_files??input.scope.paths.filter(p=>p.toLowerCase().endsWith('.png'))):[];
+   :kind.verify==='assets'?assetFiles(input):[];
   const existing=checked.filter(f=>fs.existsSync(path.join(repo,f)));
   if(existing.length)warn(`이미 있는 파일(${existing.join(', ')})은 형식 검사가 처음부터 통과해 hyperfusion이 ACCEPTANCE_ALREADY_GREEN으로 거절할 수 있음: `
    +(kind.verify==='schema'?'expect에 바뀔 값을 적거나 ':'')+'바뀐 내용을 확인하는 검사를 acceptance_commands에 넣을 것');
