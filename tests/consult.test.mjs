@@ -142,3 +142,10 @@ test('review: 한글 이름의 새 파일도 내용까지 비교하고 목록에
  const invoke=()=>{fs.writeFileSync(path.join(dir,'대사.json'),'{"a":2}\n');return {result:ok};};
  assert.throws(()=>review({repo:dir,base:'HEAD',criteria:['AC1: x']},{invoke,dir:tmp()}),/저장소가 바뀜/);
 });
+
+test('review: 검사가 만든 파일도 리뷰어가 보는 목록에 들어간다',()=>{
+ const dir=repo(),seen={};
+ const invoke=(adapter,{prompt})=>{seen.untracked=JSON.parse(prompt).untracked_new_files;return {result:ok};};
+ review({repo:dir,base:'HEAD',criteria:['AC1: x'],checks:['node -e "require(\'fs\').writeFileSync(\'made-by-check.txt\',\'x\')"']},{invoke,dir:tmp()});
+ assert.ok(seen.untracked.includes('made-by-check.txt'));
+});

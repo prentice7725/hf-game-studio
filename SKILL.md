@@ -58,6 +58,7 @@ hyperfusion의 task_kind는 6종으로 고정이라 지표(실적)는 task_kind 
 - **리뷰:** `node $HFGS/scripts/consult.mjs review --base main --criteria "AC1: ..." --check "npm test"`. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 리뷰어에게는 작성자의 요약·주장을 주지 않고 diff, 새 파일 목록, 스크립트가 직접 돌린 `--check` 결과만 준다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1이다. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다.
 - **처분:** 리뷰 지적마다 `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`로 처분을 남긴다(act, consider, noted, dismissed, contract_misread). 기각과 계약 오독에는 이유가 필요하다. `consult.mjs stats`가 리뷰어별로 쓸모 있는 지적 비율을 보여 준다.
 - **글쓰기:** `consult.mjs write <write-brief.json> --repo <게임 저장소>`. 기본 작가는 Gemini Argon(high)이다. brief에는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `context_docs`, `context_sections`를 적는다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 새 용어는 용어집에 넣을지 리드가 정한다. agy는 한 번에 2분 정도 걸린다.
+- **작업 트리 비교의 한계:** 추적 파일은 git status와 diff로만 비교한다(큰 애셋을 매번 해시하지 않으려고). assume-unchanged나 clean 필터로 git이 숨기는 변경은 잡지 못한다. 실수로 쓴 것을 잡는 장치이지 의도적 우회를 막는 장치가 아니다.
 - **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
 
 ## 검토 스킬

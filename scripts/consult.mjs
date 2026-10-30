@@ -131,9 +131,11 @@ export function review({repo,base,reviewer='codex',author='claude',authorModel,c
  const authorFamily=familyOf(author,authorModel);
  if(!authorFamily)fail(`작성자 계열을 알 수 없음: ${author}${authorModel?' '+authorModel:''}`);
  if(authorFamily===familyOf(reviewer,reviewerModel))fail(`리뷰어(${reviewer}${reviewerModel?' '+reviewerModel:''})가 작성자(${author}${authorModel?' '+authorModel:''})와 같은 계열: 다른 계열을 고를 것`);
- const {diff,changed,untracked}=changes(repo,base,git);
- if(!diff.trim()&&!untracked.length)fail(`${base} 이후 바뀐 것이 없음`);
+ const before=changes(repo,base,git);
+ if(!before.diff.trim()&&!before.untracked.length)fail(`${base} 이후 바뀐 것이 없음`);
  const checks=runChecks(repo,commands,{spawn});
+ // 검사가 파일을 만들거나 고칠 수 있으므로 diff와 목록은 검사가 끝난 뒤의 상태로 다시 받는다. 리뷰어가 보는 것과 작업 트리 비교의 기준이 같아진다.
+ const {diff,changed,untracked}=commands.length?changes(repo,base,git):before;
  const prompt=reviewPrompt({criteria,base,diff,untracked,changed,checks,reviewer});
  const r=guarded(repo,()=>invoke(adapter,{repo,prompt,schema:REVIEW_SCHEMA,options}),{git});
  const {verdict,advisory}=judge(r.result);
