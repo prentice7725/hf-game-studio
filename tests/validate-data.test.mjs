@@ -32,14 +32,14 @@ test('범위 밖 수치, 중복 id, 정의 안 된 필드를 잡는다',()=>{
 });
 
 test('대사 선택지가 없는 노드를 가리키면 실패',()=>{
- const ok={id:'d',start:'n1',nodes:[{id:'n1',speaker:'의뢰인',text:'도와주시오',choices:[{text:'좋다',next:'n2'}]},{id:'n2',speaker:'애쉬',text:'가자'}]};
+ const ok={id:'d',start:'n1',nodes:[{id:'n1',speaker:'client',text:'도와주시오',choices:[{text:'좋다',next:'n2'}]},{id:'n2',speaker:'ash',text:'가자'}]};
  assert.deepEqual(validate(schema('dialogue'),ok),[]);
  const bad=structuredClone(ok);bad.nodes[0].choices[0].next='n9';
  assert.match(validate(schema('dialogue'),bad).join('\n'),/"n9"는 \/nodes\/\*\/id에 없는 값/);
 });
 
 test('대사 길이 제한',()=>{
- const data={id:'d',start:'n1',nodes:[{id:'n1',speaker:'의뢰인',text:'가'.repeat(41)}]};
+ const data={id:'d',start:'n1',nodes:[{id:'n1',speaker:'client',text:'가'.repeat(41)}]};
  assert.match(validate(schema('dialogue'),data).join('\n'),/길이 41 > 40/);
 });
 

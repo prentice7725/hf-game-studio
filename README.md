@@ -32,6 +32,7 @@ scripts/
 tools/                     게임 저장소의 tools/hfgs/로 복사되는 수용 검사 도구
   validate-data.mjs        JSON 데이터 스키마 검사(대사 그래프 참조 검사 포함)
   check-assets.mjs         PNG 크기·투명도·용량, WAV 길이·채널·샘플레이트·용량 검사
+  dialogue-to-dtl.mjs      대사 JSON(엔진 중립 원본) → Dialogic 2 타임라인(.dtl) 변환, 용어집 인물 ID 검사(--check는 검사만)
   screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
 skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
