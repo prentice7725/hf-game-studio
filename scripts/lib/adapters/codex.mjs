@@ -1,8 +1,12 @@
 // OpenAI Codex CLI(codex exec)를 읽기 전용 리뷰어로 부른다. 기본 모델은 리뷰 전담 Sol이다.
 // 출처: hyperfusion scripts/adapters/codex.mjs, scripts/codex-sandbox.mjs (MIT). 쓰기 샌드박스·재개·APEX 승인은 뺐다.
 // 플래그 출처: https://developers.openai.com/codex/noninteractive
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {probe as probeCli} from '../cli.mjs';
+import {cliEnv} from '../env.mjs';
 
 export const name='codex';
 export const auth=['OPENAI_','CODEX_'];
@@ -11,7 +15,43 @@ export const DEFAULT_MODEL='gpt-6.1-sol';
 export const EFFORTS=['minimal','low','medium','high','xhigh'];
 export const binary=(env=process.env)=>env.HFGS_CODEX_BIN||'codex';
 export const requiredFlags=['--sandbox','--output-schema','--cd','--json'];
-export const probe=()=>probeCli('Codex',binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],auth});
+export const probe=()=>{
+ const cli=probeCli('Codex',binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],auth});
+ return {...cli,mcp_off_args:mcpOffArgs(cli),
+  warnings:process.env[ALLOW_MCP_ENV]==='1'?[`${ALLOW_MCP_ENV}=1: Codex의 MCP 서버를 끄지 않고 실행함. 리뷰어가 asset_pipeline 같은 쓰기 도구를 부를 수 있음`]:[]};
+};
+
+// MCP 도구는 read-only 샌드박스 밖에서 돈다. 사용자 설정의 asset_pipeline 같은 서버가 켜져 있으면 리뷰어가 애셋을 만들 수 있다.
+// 그래서 켜진 서버를 모두 끈다. codex 0.164.0 실측:
+// - mcp_servers={}로는 지워지지 않는다(설정이 합쳐진다).
+// - config.toml에 정의된 서버는 mcp_servers.<이름>.enabled=false로 꺼진다. 이름에 따옴표를 붙이면 다른 표로 읽혀 "invalid transport"가 난다.
+// - 플러그인이 넣은 서버(cua_repl 등)는 그렇게 하면 "invalid transport"가 나고, 플러그인을 꺼도 남는다. 같은 이름의 꺼진 가짜 서버로 덮어야 꺼진다.
+// 끈 뒤 목록을 다시 받아 켜진 서버가 남았으면 실행을 막는다. 운영자는 HFGS_CODEX_ALLOW_MCP=1로 이 검사를 건너뛸 수 있다.
+export const ALLOW_MCP_ENV='HFGS_CODEX_ALLOW_MCP';
+const BARE=/^[A-Za-z0-9_-]+$/;
+export function configServerNames(text){
+ return new Set([...String(text??'').matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))\]\s*$/gm)].map(m=>m[1]??m[2]));
+}
+export function disableMcpArgs(names,configured){
+ return names.flatMap(n=>{
+  if(!BARE.test(n))throw Error(`CLI_UNAVAILABLE: MCP 서버 이름 "${n}"은 -c로 끌 수 없음. ${ALLOW_MCP_ENV}=1이면 건너뜀`);
+  return ['-c',configured.has(n)?`mcp_servers.${n}.enabled=false`:`mcp_servers.${n}={command="hfgs-disabled",enabled=false}`];
+ });
+}
+const codexHome=env=>env.CODEX_HOME||path.join(os.homedir(),'.codex');
+export function mcpOffArgs(cli,{spawn=spawnSync,env=process.env,readConfig=()=>{try{return fs.readFileSync(path.join(codexHome(env),'config.toml'),'utf8');}catch{return '';}}}={}){
+ if(env[ALLOW_MCP_ENV]==='1')return [];
+ const list=extra=>{
+  const r=spawn(cli.executable,[...(cli.prefix_args??[]),...extra,'mcp','list','--json'],{encoding:'utf8',timeout:15000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:cliEnv(auth)});
+  let out;try{out=JSON.parse(r.stdout);}catch{out=null;}
+  if(r.error||r.status!==0||!Array.isArray(out))throw Error(`CLI_UNAVAILABLE: codex mcp list --json 실패(${String(r.stderr??'').trim().split(/\r?\n/).slice(-2).join(' ').slice(0,300)}). MCP 서버를 끌 수 없어 실행하지 않음. ${ALLOW_MCP_ENV}=1이면 건너뜀`);
+  return out.filter(s=>s?.enabled!==false&&typeof s?.name==='string').map(s=>s.name);
+ };
+ const args=disableMcpArgs(list([]),configServerNames(readConfig()));
+ const left=args.length?list(args):[];
+ if(left.length)throw Error(`CLI_UNAVAILABLE: MCP 서버를 끄지 못함: ${left.join(', ')}. ${ALLOW_MCP_ENV}=1이면 건너뜀`);
+ return args;
+}
 
 // OpenAI의 구조화 출력은 모든 객체에서 properties의 모든 키를 required로 요구한다(아니면 400 invalid_json_schema).
 // 선택 항목도 필수로 바꿔 보낸다. 모델은 없으면 빈 값을 낸다.
@@ -46,6 +86,7 @@ export function command({repo,prompt,schema,options={},cli,dir}){
   ...(options.reasoning_effort?['-c',`model_reasoning_effort="${options.reasoning_effort}"`]:[]),
   // 리드용 사용자 훅을 물려받지 않는다.
   '-c','features.hooks=false',
+  ...(cli.mcp_off_args??[]),
   ...windowsSandboxArgs(),
   // 프롬프트는 stdin('-')으로 넘긴다. 명령줄 길이 제한과 따옴표 문제를 피한다.
   '--json','-'];
@@ -64,7 +105,8 @@ export function parse(stdout){
   let e;try{e=JSON.parse(line);}catch{throw Error('Codex가 JSONL이 아닌 줄을 냄');}
   if(!e||typeof e.type!=='string')throw Error('Codex가 알 수 없는 이벤트를 냄');
   // 샌드박스가 셸을 띄우지 못하면 턴은 정상 종료되고 모델은 "못 했다"고만 답한다. 명령 실행 결과에서 직접 찾는다.
-  if(e.type==='item.completed'&&e.item?.type==='command_execution'){
+  // 실패한 명령만 본다. 성공한 명령의 출력(예: 이 파일을 cat한 내용)에 같은 문구가 있어도 샌드박스 실패가 아니다.
+  if(e.type==='item.completed'&&e.item?.type==='command_execution'&&e.item.exit_code!==0){
    const out=String(e.item.aggregated_output??'')+'\n'+String(e.item.error??'');
    const hit=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
    if(hit&&!sandboxFailure)sandboxFailure=hit.trim().slice(0,200);

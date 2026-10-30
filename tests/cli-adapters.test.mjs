@@ -26,7 +26,7 @@ test('codex: JSONL에서 최종 메시지를 꺼내고 샌드박스 실패는 �
  const ok=[{type:'thread.started',thread_id:'t1'},{type:'item.completed',item:{type:'agent_message',text:'{"summary":"s"}'}},{type:'turn.completed',usage:{input_tokens:1,output_tokens:2}}].map(JSON.stringify).join('\n');
  assert.deepEqual(codex.parse(ok).result,{summary:'s'});
  assert.equal(codex.parse(ok).session_id,'t1');
- const box=[{type:'item.completed',item:{type:'command_execution',aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5'}},{type:'item.completed',item:{type:'agent_message',text:'{}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
+ const box=[{type:'item.completed',item:{type:'command_execution',exit_code:1,aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5'}},{type:'item.completed',item:{type:'agent_message',text:'{}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
  assert.throws(()=>codex.parse(box),/CODEX_WINDOWS_SANDBOX/);
  assert.throws(()=>codex.parse(JSON.stringify({type:'turn.failed',error:{message:'quota'}})),/턴 실패.*quota/);
  assert.throws(()=>codex.parse(JSON.stringify({type:'thread.started',thread_id:'t'})),/끝나지 않았/);
@@ -84,4 +84,34 @@ test('grok: 편집·셸·비밀 읽기를 막고 프롬프트는 파일로, 세�
  assert.deepEqual(grok.parse(out(r.session),r).result,{a:1});
  assert.throws(()=>grok.parse(out('other'),r),/세션/);
  assert.throws(()=>grok.parse(JSON.stringify({sessionId:r.session,stopReason:'max_turns',text:''}),r),/멈춤/);
+});
+
+test('codex: 설정의 서버는 enabled=false, 플러그인 서버는 꺼진 가짜로 덮고, 끈 뒤 다시 확인한다',()=>{
+ const config='[mcp_servers.asset_pipeline]\ncommand="x"\n[mcp_servers."godot-ai"]\ncommand="y"\n[mcp_servers.asset_pipeline.env]\n';
+ assert.deepEqual([...codex.configServerNames(config)],['asset_pipeline','godot-ai']);
+ const all=JSON.stringify([{name:'asset_pipeline',enabled:true},{name:'godot-ai',enabled:true},{name:'cua_repl',enabled:true},{name:'off',enabled:false}]);
+ const calls=[];
+ const spawn=(exe,args)=>{calls.push(args);return {status:0,stdout:args.includes('-c')?JSON.stringify([{name:'asset_pipeline',enabled:false}]):all};};
+ const args=codex.mcpOffArgs(cli,{spawn,env:{},readConfig:()=>config});
+ assert.deepEqual(args,['-c','mcp_servers.asset_pipeline.enabled=false','-c','mcp_servers.godot-ai.enabled=false','-c','mcp_servers.cua_repl={command="hfgs-disabled",enabled=false}']);
+ assert.equal(calls.length,2,'끈 뒤 목록을 다시 받는다');
+ const r=codex.command({repo:'/r',prompt:'P',schema,cli:{...cli,mcp_off_args:args},dir:'/d'});
+ assert.ok(r.args.includes('mcp_servers.cua_repl={command="hfgs-disabled",enabled=false}'));
+ // 끈 뒤에도 켜진 서버가 남거나, 목록을 못 얻거나, -c로 쓸 수 없는 이름이면 막는다.
+ assert.throws(()=>codex.mcpOffArgs(cli,{spawn:()=>({status:0,stdout:all}),env:{},readConfig:()=>config}),/끄지 못함: asset_pipeline, godot-ai, cua_repl/);
+ assert.throws(()=>codex.mcpOffArgs(cli,{spawn:()=>({status:1,stdout:'',stderr:'invalid transport'}),env:{},readConfig:()=>''}),/mcp list --json 실패\(invalid transport\)/);
+ assert.throws(()=>codex.mcpOffArgs(cli,{spawn:()=>({status:0,stdout:JSON.stringify([{name:'a.b',enabled:true}])}),env:{},readConfig:()=>''}),/끌 수 없음/);
+ assert.deepEqual(codex.mcpOffArgs(cli,{spawn:()=>{throw Error('불리면 안 됨');},env:{[codex.ALLOW_MCP_ENV]:'1'}}),[]);
+});
+
+test('codex: 성공한 명령의 출력에 샌드박스 오류 문구가 있어도 실패로 보지 않는다',()=>{
+ const ev=exit=>[{type:'item.completed',item:{type:'command_execution',exit_code:exit,aggregated_output:'// (CreateProcessAsUserW failed: 5 등) 주석'}},{type:'item.completed',item:{type:'agent_message',text:'{"summary":"s"}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
+ assert.deepEqual(codex.parse(ev(0)).result,{summary:'s'});
+ assert.throws(()=>codex.parse(ev(1)),/CODEX_WINDOWS_SANDBOX/);
+});
+
+test('agy: 켜진 MCP 서버 이름을 표에서 읽는다',()=>{
+ const out='NAME             TYPE   STATUS   COMMAND/URL\nasset_pipeline   stdio  enabled  c:/x.exe\nold   http  disabled  http://x\n';
+ assert.deepEqual(agy.enabledMcpServers(cli,{spawn:()=>({status:0,stdout:out})}),['asset_pipeline']);
+ assert.deepEqual(agy.enabledMcpServers(cli,{spawn:()=>({status:1})}),[]);
 });

@@ -22,6 +22,7 @@ presets/
 roles/*.md                 역할 지시문(일꾼 brief의 constraints로 들어감)
 scripts/
   brief.mjs                게임 brief → hyperfusion brief 컴파일러
+  consult.mjs              다른 계열 전문가 호출: review(결론 없이 diff·검사 결과로 리뷰), write(Argon 글쓰기), dispose, stats
   setup.mjs                게임 저장소에 레이어 설치
   lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
     cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
