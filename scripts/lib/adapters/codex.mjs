@@ -2,7 +2,9 @@
 // 출처: hyperfusion scripts/adapters/codex.mjs, scripts/codex-sandbox.mjs (MIT). 쓰기 샌드박스·재개·APEX 승인은 뺐다.
 // 플래그 출처: https://developers.openai.com/codex/noninteractive
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {probe as probeCli} from '../cli.mjs';
+import {cliEnv} from '../env.mjs';
 
 export const name='codex';
 export const auth=['OPENAI_','CODEX_'];
@@ -11,7 +13,25 @@ export const DEFAULT_MODEL='gpt-6.1-sol';
 export const EFFORTS=['minimal','low','medium','high','xhigh'];
 export const binary=(env=process.env)=>env.HFGS_CODEX_BIN||'codex';
 export const requiredFlags=['--sandbox','--output-schema','--cd','--json'];
-export const probe=()=>probeCli('Codex',binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],auth});
+export const probe=()=>{
+ const cli=probeCli('Codex',binary(),requiredFlags,['--ephemeral'],{help:['exec','--help'],auth});
+ return {...cli,mcp_servers:enabledMcpServers(cli)};
+};
+
+// MCP 도구는 read-only 샌드박스 밖에서 돈다. 사용자 설정의 asset_pipeline 같은 서버가 켜져 있으면 리뷰어가 애셋을 만들 수 있다.
+// 그래서 켜진 서버를 이름으로 모두 끈다(-c mcp_servers.<이름>.enabled=false. mcp_servers={}로는 지워지지 않는다).
+// 목록을 못 얻으면 끌 수 없으므로 실행을 막는다. 운영자는 HFGS_CODEX_ALLOW_MCP=1로 이 검사를 건너뛸 수 있다.
+export const ALLOW_MCP_ENV='HFGS_CODEX_ALLOW_MCP';
+export function enabledMcpServers(cli,{spawn=spawnSync,env=process.env}={}){
+ if(env[ALLOW_MCP_ENV]==='1')return [];
+ const r=spawn(cli.executable,[...(cli.prefix_args??[]),'mcp','list','--json'],{encoding:'utf8',timeout:15000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:cliEnv(auth)});
+ let list;
+ try{list=JSON.parse(r.stdout);}catch{list=null;}
+ if(r.error||r.status!==0||!Array.isArray(list))throw Error(`CLI_UNAVAILABLE: codex mcp list --json으로 MCP 서버 목록을 얻지 못해 끌 수 없음. ${ALLOW_MCP_ENV}=1이면 건너뜀`);
+ return list.filter(s=>s?.enabled!==false&&typeof s?.name==='string').map(s=>s.name);
+}
+const tomlKey=k=>/^[A-Za-z0-9_-]+$/.test(k)?k:JSON.stringify(k);
+export const disableMcpArgs=names=>names.flatMap(n=>['-c',`mcp_servers.${tomlKey(n)}.enabled=false`]);
 
 // OpenAI의 구조화 출력은 모든 객체에서 properties의 모든 키를 required로 요구한다(아니면 400 invalid_json_schema).
 // 선택 항목도 필수로 바꿔 보낸다. 모델은 없으면 빈 값을 낸다.
@@ -46,6 +66,7 @@ export function command({repo,prompt,schema,options={},cli,dir}){
   ...(options.reasoning_effort?['-c',`model_reasoning_effort="${options.reasoning_effort}"`]:[]),
   // 리드용 사용자 훅을 물려받지 않는다.
   '-c','features.hooks=false',
+  ...disableMcpArgs(cli.mcp_servers??[]),
   ...windowsSandboxArgs(),
   // 프롬프트는 stdin('-')으로 넘긴다. 명령줄 길이 제한과 따옴표 문제를 피한다.
   '--json','-'];
@@ -64,7 +85,8 @@ export function parse(stdout){
   let e;try{e=JSON.parse(line);}catch{throw Error('Codex가 JSONL이 아닌 줄을 냄');}
   if(!e||typeof e.type!=='string')throw Error('Codex가 알 수 없는 이벤트를 냄');
   // 샌드박스가 셸을 띄우지 못하면 턴은 정상 종료되고 모델은 "못 했다"고만 답한다. 명령 실행 결과에서 직접 찾는다.
-  if(e.type==='item.completed'&&e.item?.type==='command_execution'){
+  // 실패한 명령만 본다. 성공한 명령의 출력(예: 이 파일을 cat한 내용)에 같은 문구가 있어도 샌드박스 실패가 아니다.
+  if(e.type==='item.completed'&&e.item?.type==='command_execution'&&e.item.exit_code!==0){
    const out=String(e.item.aggregated_output??'')+'\n'+String(e.item.error??'');
    const hit=out.split(/\r?\n/).find(l=>SANDBOX_FAILURE.test(l));
    if(hit&&!sandboxFailure)sandboxFailure=hit.trim().slice(0,200);

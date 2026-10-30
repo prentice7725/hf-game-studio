@@ -26,7 +26,7 @@ test('codex: JSONL에서 최종 메시지를 꺼내고 샌드박스 실패는 �
  const ok=[{type:'thread.started',thread_id:'t1'},{type:'item.completed',item:{type:'agent_message',text:'{"summary":"s"}'}},{type:'turn.completed',usage:{input_tokens:1,output_tokens:2}}].map(JSON.stringify).join('\n');
  assert.deepEqual(codex.parse(ok).result,{summary:'s'});
  assert.equal(codex.parse(ok).session_id,'t1');
- const box=[{type:'item.completed',item:{type:'command_execution',aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5'}},{type:'item.completed',item:{type:'agent_message',text:'{}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
+ const box=[{type:'item.completed',item:{type:'command_execution',exit_code:1,aggregated_output:'windows sandbox failed: CreateProcessAsUserW failed: 5'}},{type:'item.completed',item:{type:'agent_message',text:'{}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
  assert.throws(()=>codex.parse(box),/CODEX_WINDOWS_SANDBOX/);
  assert.throws(()=>codex.parse(JSON.stringify({type:'turn.failed',error:{message:'quota'}})),/턴 실패.*quota/);
  assert.throws(()=>codex.parse(JSON.stringify({type:'thread.started',thread_id:'t'})),/끝나지 않았/);
@@ -84,4 +84,27 @@ test('grok: 편집·셸·비밀 읽기를 막고 프롬프트는 파일로, 세�
  assert.deepEqual(grok.parse(out(r.session),r).result,{a:1});
  assert.throws(()=>grok.parse(out('other'),r),/세션/);
  assert.throws(()=>grok.parse(JSON.stringify({sessionId:r.session,stopReason:'max_turns',text:''}),r),/멈춤/);
+});
+
+test('codex: 켜진 MCP 서버를 이름으로 모두 끄고, 목록을 못 얻으면 막는다',()=>{
+ const list=JSON.stringify([{name:'asset_pipeline',enabled:true},{name:'godot-ai',enabled:true},{name:'off',enabled:false},{name:'a.b',enabled:true}]);
+ const names=codex.enabledMcpServers(cli,{spawn:()=>({status:0,stdout:list}),env:{}});
+ assert.deepEqual(names,['asset_pipeline','godot-ai','a.b']);
+ assert.deepEqual(codex.disableMcpArgs(names),['-c','mcp_servers.asset_pipeline.enabled=false','-c','mcp_servers.godot-ai.enabled=false','-c','mcp_servers."a.b".enabled=false']);
+ const r=codex.command({repo:'/r',prompt:'P',schema,cli:{...cli,mcp_servers:['asset_pipeline']},dir:'/d'});
+ assert.ok(r.args.includes('mcp_servers.asset_pipeline.enabled=false'));
+ assert.throws(()=>codex.enabledMcpServers(cli,{spawn:()=>({status:2,stdout:''}),env:{}}),/MCP 서버 목록/);
+ assert.deepEqual(codex.enabledMcpServers(cli,{spawn:()=>{throw Error('불리면 안 됨');},env:{[codex.ALLOW_MCP_ENV]:'1'}}),[]);
+});
+
+test('codex: 성공한 명령의 출력에 샌드박스 오류 문구가 있어도 실패로 보지 않는다',()=>{
+ const ev=exit=>[{type:'item.completed',item:{type:'command_execution',exit_code:exit,aggregated_output:'// (CreateProcessAsUserW failed: 5 등) 주석'}},{type:'item.completed',item:{type:'agent_message',text:'{"summary":"s"}'}},{type:'turn.completed'}].map(JSON.stringify).join('\n');
+ assert.deepEqual(codex.parse(ev(0)).result,{summary:'s'});
+ assert.throws(()=>codex.parse(ev(1)),/CODEX_WINDOWS_SANDBOX/);
+});
+
+test('agy: 켜진 MCP 서버 이름을 표에서 읽는다',()=>{
+ const out='NAME             TYPE   STATUS   COMMAND/URL\nasset_pipeline   stdio  enabled  c:/x.exe\nold   http  disabled  http://x\n';
+ assert.deepEqual(agy.enabledMcpServers(cli,{spawn:()=>({status:0,stdout:out})}),['asset_pipeline']);
+ assert.deepEqual(agy.enabledMcpServers(cli,{spawn:()=>({status:1})}),[]);
 });

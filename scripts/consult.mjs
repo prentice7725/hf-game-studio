@@ -128,7 +128,7 @@ export function review({repo,base,reviewer='codex',author='claude',criteria=[],c
  const report={kind:'review',created_at:new Date().toISOString(),repo,base,head:git(repo,['rev-parse','HEAD']).trim(),adapter:reviewer,model:reviewerModel,author,
   criteria,checks,verdict,advisory,summary:r.result.summary,confidence:r.result.confidence,blocking_criteria:r.result.blocking_criteria,
   findings:r.result.findings.map((f,i)=>({id:`F${i+1}`,...f})),session_id:r.session_id??null,redacted:r.redacted};
- return {report,file:saveReport(report,dir)};
+ return {report,file:saveReport(report,dir),warnings:r.warnings??[]};
 }
 
 export const WRITE_SCHEMA={type:'object',properties:{content:{type:'string'},new_terms:{type:'array',items:{type:'object',properties:{term:{type:'string'},definition:{type:'string'}},required:['term','definition'],additionalProperties:false}},notes:{type:'string'}},required:['content','new_terms','notes'],additionalProperties:false};
@@ -165,7 +165,7 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
  const r=guarded(repo,()=>invoke(adapter,{repo,prompt,schema:WRITE_SCHEMA,options,timeoutMs:options.timeout_ms}),{git});
  if((brief.format??'markdown')==='json'){try{JSON.parse(r.result.content);}catch(e){fail(`작가가 낸 content가 JSON이 아님: ${e.message}`);}}
  const report={kind:'write',created_at:new Date().toISOString(),repo,adapter:writer,model:model??adapter.DEFAULT_MODEL??null,brief,...r.result,session_id:r.session_id??null,redacted:r.redacted};
- return {report,file:saveReport(report,dir)};
+ return {report,file:saveReport(report,dir),warnings:r.warnings??[]};
 }
 
 // 리드가 지적마다 처분을 남긴다. 기각과 계약 오독에는 이유가 필요하다.
@@ -199,7 +199,8 @@ export function stats(reports){
  return [...rows.values()].map(r=>({...r,actionable_rate:r.disposed?Math.round(r.actionable/r.disposed*100)/100:null}));
 }
 
-function print(report,file){
+function print(report,file,warnings=[]){
+ for(const w of warnings)console.error('경고: '+w);
  if(report.kind==='review'){
   console.log(`판정: ${report.verdict}${report.advisory?' (근거 있는 blocker·major 지적이 없어 권고로만 봄)':''}, 확신: ${report.confidence}`);
   console.log(report.summary);
@@ -229,14 +230,14 @@ async function main(){
  if(cmd==='review'){
   if(!a.base)fail('--base <ref> 필요(예: main)');
   const criteria=[...a.criteria,...(a.criteria_file?fs.readFileSync(a.criteria_file,'utf8').split(/\r?\n/).filter(l=>/^AC\d+:/.test(l.trim())).map(l=>l.trim()):[])];
-  const {report,file}=review({repo,base:a.base,reviewer:a.reviewer,author:a.author,criteria,checks:a.check,model:a.model,effort:a.effort});
-  print(report,file);
+  const {report,file,warnings}=review({repo,base:a.base,reviewer:a.reviewer,author:a.author,criteria,checks:a.check,model:a.model,effort:a.effort});
+  print(report,file,warnings);
   return report.verdict==='pass'?0:1;
  }
  if(cmd==='write'){
   if(!a._[0])fail('사용법: consult.mjs write <write-brief.json>');
-  const {report,file}=write(JSON.parse(fs.readFileSync(a._[0],'utf8')),{repo,writer:a.writer,model:a.model,effort:a.effort},{warn:m=>console.error('경고: '+m)});
-  print(report,file);
+  const {report,file,warnings}=write(JSON.parse(fs.readFileSync(a._[0],'utf8')),{repo,writer:a.writer,model:a.model,effort:a.effort},{warn:m=>console.error('경고: '+m)});
+  print(report,file,warnings);
   return 0;
  }
  if(cmd==='dispose'){

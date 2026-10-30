@@ -54,8 +54,17 @@ export function checkModel(cli,model,{spawn=spawnSync,env=process.env}={}){
 export const probe=(options={})=>{
  const choice=selectModel(options);
  const cli=probeCli('Antigravity',binary(),[...requiredFlags,...(choice.effort_flag?['--effort']:[])],['--print-timeout','--new-project'],{auth});
- return {...cli,model_check:checkModel(cli,choice.model)};
+ const mcp=enabledMcpServers(cli);
+ return {...cli,model_check:checkModel(cli,choice.model),
+  warnings:mcp.length?[`agy에 MCP 서버가 켜져 있음(${mcp.join(', ')}). agy에는 실행 단위로 끄는 플래그가 없어 지시문으로만 막는다. 쓰기 도구가 있는 서버(asset_pipeline 등)는 agy mcp disable로 꺼 두는 편이 안전함`]:[]};
 };
+
+// `agy mcp list` 표에서 STATUS가 enabled인 서버 이름. 목록을 못 얻으면 빈 목록(경고만 못 할 뿐 실행은 막지 않는다).
+export function enabledMcpServers(cli,{spawn=spawnSync}={}){
+ const r=spawn(cli.executable,[...(cli.prefix_args??[]),'mcp','list'],{encoding:'utf8',timeout:15000,maxBuffer:1024*1024,stdio:['ignore','pipe','pipe'],windowsHide:true,env:cliEnv(auth)});
+ if(r.error||r.status!==0)return [];
+ return String(r.stdout??'').split(/\r?\n/).slice(1).map(l=>l.trim().split(/\s+/)).filter(c=>c.length>=3&&c[2]==='enabled').map(c=>c[0]);
+}
 
 // agy가 스스로 먼저 끝내도록 프로세스 시간 제한보다 30초 짧게 잡는다. 그래야 강제 종료 대신 정상 응답이 남는다.
 export const printTimeout=timeoutMs=>Math.max(30,Math.floor(((timeoutMs??1200000)-30000)/1000))+'s';

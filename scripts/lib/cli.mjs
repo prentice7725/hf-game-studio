@@ -72,7 +72,7 @@ function objectEnd(s,start){
 // 쓰기 금지를 "셸 금지"로 읽은 Codex 리뷰어가 파일을 하나도 열지 못한 일이 있었다. Codex에는 셸 말고 읽기 도구가 없으므로
 // Codex에게만 읽기 전용 셸 명령을 허용한다고 적는다. 쓰기는 각 CLI의 read-only 샌드박스·plan 모드와 deny 규칙이 막는다.
 // Antigravity는 헤드리스에서 허용 목록 밖의 셸 명령이 자동 거부되고, 한 번이라도 거부되면 결과 없이 끝나므로 셸 문장을 주지 않는다.
-const READ_ONLY_BASE='This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers, formatters or any command that writes to disk. Put everything you produce in your final JSON answer.';
+const READ_ONLY_BASE='This is a READ-ONLY consultation. Do not create, edit, move or delete any file. Do not run builds, tests, installers, formatters or any command that writes to disk. Do not call any MCP tool or external service. Put everything you produce in your final JSON answer.';
 const READ_SHELL='If your only way to read files is a shell, you MAY run read-only commands such as cat, type, head, tail, sed -n, ls, dir, find, rg, grep, wc, git diff, git show, git log, git status and git ls-files. Never redirect their output into a file.';
 const READ_TOOLS='Read files only with your file view tools. Run no shell commands at all (not even git diff, cat or ls): headless mode auto-denies them and one denied command ends this run with no result.';
 const READ_GENERIC='Read files with your file read tools only.';
@@ -99,6 +99,6 @@ export function invoke(adapter,{repo,prompt,schema,options={},timeoutMs=20*60*10
   let parsed;
   try{parsed=adapter.parse(r.stdout??'',request);}
   catch(e){throw Error(`${adapter.name}: ${e.message}${why()?'. '+why():''} (종료 코드 ${r.status}, stderr 끝: ${String(r.stderr??'').trim().slice(-300)})`);}
-  return {...parsed,redacted:Object.values(counts).reduce((a,b)=>a+b,0)};
+  return {...parsed,redacted:Object.values(counts).reduce((a,b)=>a+b,0),warnings:cli.warnings??[]};
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 }
