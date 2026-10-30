@@ -23,6 +23,11 @@ roles/*.md                 역할 지시문(일꾼 brief의 constraints로 들�
 scripts/
   brief.mjs                게임 brief → hyperfusion brief 컴파일러
   setup.mjs                게임 저장소에 레이어 설치
+  lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
+    cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
+    adapters/              codex(리뷰, 기본 Sol), agy(글쓰기·리뷰, 기본 Gemini Argon high), grok(리뷰)
+    redaction.mjs          보내는 프롬프트의 비밀값·개인정보 가리기
+    env.mjs, platform.mjs  CLI에 넘길 환경변수 제한, 실행 파일 찾기와 Windows 명령줄 길이
 tools/                     게임 저장소의 tools/hfgs/로 복사되는 수용 검사 도구
   validate-data.mjs        JSON 데이터 스키마 검사(대사 그래프 참조 검사 포함)
   check-assets.mjs         PNG 크기·투명도·용량, WAV 길이·채널·샘플레이트·용량 검사
