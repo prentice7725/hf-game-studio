@@ -44,7 +44,7 @@ hyperfusion의 task_kind는 6종으로 고정이라 지표(실적)는 task_kind 
 - **로컬 서버 스크린샷은 `serve`.** 수용 검사는 일꾼 프로세스가 끝난 뒤 돌기 때문에 일꾼이 띄운 서버에 기대면 항상 실패한다. 서버 실행 명령을 `screenshot.serve`에 적어 검사 도구가 띄우고 종료하게 한다(없으면 컴파일러가 거절).
 
 - **검사 기준은 범위 밖에.** `schema`, `assets_manifest`는 `scope.paths`에 넣을 수 없다(컴파일러가 거절). 일꾼이 기준을 느슨하게 고쳐 통과하는 길을 막는다.
-- **asset-pipeline으로 이미지 만들기.** image-asset brief에 `"asset_pipeline": {"project_id": "<게임 id>"}`를 넣으면 일꾼이 asset_pipeline MCP 도구(`asset_build_brief` → `asset_route` → `asset_generate` → `asset_inspect_run`)로만 생성하고, 재시도·우회 없이 실패하면 needs_decision으로 멈추며, run_id와 리뷰 상태를 보고한다. 이 MCP를 쓸 수 있는 일꾼은 Codex 설정에 asset_pipeline이 등록된 Luna뿐이라 `fusion-state.mjs init $HF_REPO "$BRIEF" --executor luna`로 고정한다. 리드는 작업 밖에서 `asset_capabilities`로 준비 상태를 먼저 볼 수 있다.
+- **asset-pipeline으로 이미지 만들기.** image-asset brief에 `"asset_pipeline": {"project_id": "<게임 id>"}`를 넣으면 일꾼이 asset_pipeline MCP 도구(`asset_build_brief` → `asset_route` → `asset_generate` → `asset_inspect_run`)로만 생성하고, 재시도·우회 없이 실패하면 needs_decision으로 멈추며, run_id와 리뷰 상태를 보고한다. 이 MCP를 쓸 수 있는 일꾼은 Codex 설정에 asset_pipeline이 등록된 Luna뿐이라 `fusion-state.mjs init $HF_REPO "$BRIEF" --executor luna`로 고정한다. 참조 이미지 편집(표정·포즈 변형 등)은 ComfyUI 워크플로가 모두 text-to-image라 CLI provider로만 되므로 `"workflow_id": "codex_imagegen"`(또는 `grok_imagine`)와 `"reference_image": "<저장소 기준 경로>"`를 함께 적는다. 참조 이미지는 `scope.paths` 밖에 둔다. 리드는 작업 밖에서 `asset_capabilities`로 준비 상태를 먼저 볼 수 있다.
 - **이미지는 사람 승인까지.** 매니페스트 검사는 크기·투명도·용량만 본다. 화풍 일관성은 리드 리뷰와 사용자 승인으로 본다. 승인 전 애셋은 아틀라스에 넣지 않는다.
 - **오디오는 일꾼이 없다.** 오디오를 생성하는 일꾼이 없으므로 오디오는 사양서(gdd)로만 다룬다.
 - **게이트는 hyperfusion 것 하나.** 원본 템플릿(Claude-Code-Game-Studios)의 디렉터 게이트·GDD 섹션 강제는 가져오지 않았다. 승인·체크포인트는 hyperfusion 프로젝트(`project.mjs`)로만 한다.

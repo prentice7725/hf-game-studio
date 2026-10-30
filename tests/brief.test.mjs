@@ -14,6 +14,8 @@ function repoWithDocs(){
  fs.mkdirSync(path.join(dir,'design'));
  fs.writeFileSync(path.join(dir,'design','glossary.md'),'# 용어집\n');
  fs.copyFileSync(path.join(STUDIO_ROOT,'templates','design','gdd.md'),path.join(dir,'design','gdd.md'));
+ fs.mkdirSync(path.join(dir,'design','refs'));
+ fs.writeFileSync(path.join(dir,'design','refs','merc.png'),'');
  return dir;
 }
 
@@ -63,6 +65,21 @@ test('asset_pipeline: image-asset 밖, 잘못된 project_id, 모르는 필드는
  assert.throws(()=>compile({...g,asset_pipeline:{}},{repo:repoWithDocs()}),/project_id/);
  assert.throws(()=>compile({...g,asset_pipeline:{project_id:'a',provider:'grok'}},{repo:repoWithDocs()}),/알 수 없는 필드: provider/);
  assert.throws(()=>compile({...g,asset_pipeline:'merc-guild'},{repo:repoWithDocs()}),/형식/);
+});
+
+test('asset_pipeline: 참조 편집은 workflow_id를 명시하고 참조 이미지를 절대 경로로 넘긴다',()=>{
+ const repo=repoWithDocs(),b=compile(example('merc-portrait-variant.json'),{repo});
+ assert.ok(b.constraints.some(c=>c.includes('"id": "codex_imagegen", "allow_experimental": true')));
+ assert.ok(b.constraints.some(c=>c.includes(`reference_image "${path.join(repo,'design','refs','merc.png')}"`)));
+ const g=example('merc-portrait-variant.json');
+ const ap=g.asset_pipeline;
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,workflow_id:undefined}},{repo}),/workflow_id가 필요/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,reference_image:'design/refs/none.png'}},{repo}),/reference_image가 없음/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,reference_image:path.join(repo,'design','refs','merc.png')}},{repo}),/상대 경로/);
+ assert.throws(()=>compile({...g,scope:{paths:[...g.scope.paths,ap.reference_image]}},{repo}),/범위 밖에 둘 것/);
+ assert.throws(()=>compile({...g,asset_pipeline:{...ap,workflow_id:'Codex ImageGen'}},{repo}),/워크플로 ID/);
+ const plain=compile(example('merc-portrait-pipeline.json'),{repo});
+ assert.ok(!plain.constraints.some(c=>c.includes('allow_experimental')),'workflow_id가 없으면 자동 라우팅 그대로');
 });
 
 test('ui: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싼다',()=>{
