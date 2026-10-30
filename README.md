@@ -179,6 +179,7 @@ hyperfusion은 일꾼 프로세스가 **모두 끝난 뒤에** 수용 검사를 
 ## 주의
 
 - **Grok 이미지 생성은 검증되지 않았습니다.** hyperfusion 테스트의 CLI는 가짜라 실제 이미지 생성과 저장은 확인되지 않았습니다. 애셋 작업 전에 Grok으로 이미지 한 장을 실제 저장까지 해 보세요.
+- **asset-pipeline 연동.** [asset-pipeline](https://github.com/prentice7725/asset-pipeline)의 MCP 서버를 Codex(`~/.codex/config.toml`의 `[mcp_servers.asset_pipeline]`)에 등록해 두면, image-asset brief에 `"asset_pipeline": {"project_id": "<게임 id>"}`를 넣어 Luna가 그 서버로 생성하게 할 수 있습니다(예: `examples/briefs/merc-portrait-pipeline.json`). 컴파일러가 생성 절차·재시도 금지·run_id 보고를 제약으로 넣고, `init ... --executor luna`로 배치하라고 경고합니다. Claude 일꾼은 hyperfusion이 MCP를 막고, Grok·Antigravity에는 이 서버가 없습니다. 결과는 asset-pipeline에서도 REVIEW_REQUIRED 후보이므로 사람 승인 규칙은 그대로입니다.
 - **이미지는 사람 승인까지 필요합니다.** `check-assets.mjs`는 크기·투명도·용량만 봅니다. 화풍과 캐릭터 일관성은 리뷰와 사람 승인으로 확인하고, 승인 전에는 아틀라스에 넣지 않습니다.
 - **Antigravity 모델 고정.** 프리셋은 `executors.antigravity.model`을 `gemini-4-argon`(+ `reasoning_effort: high` → `gemini-4-argon-high`)으로 둡니다. 설치된 `agy`가 `--model`을 지원하지 않거나 `agy models`에 그 모델이 없으면 hyperfusion이 Antigravity를 미설치로 보고 건너뜁니다. setup-doctor로 확인하세요.
 - **오디오 생성 일꾼은 없습니다.** 오디오는 사양서(gdd)로만 다룹니다.
