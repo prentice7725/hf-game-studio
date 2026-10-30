@@ -25,7 +25,19 @@
 
 ## HyperFusion
 
-실행 엔진입니다. 이 저장소는 hyperfusion 코드를 포함하지 않고, 설치된 hyperfusion을 그대로 씁니다.
+`scripts/lib/`의 외부 CLI 호출 코드는 hyperfusion 0.30.0에서 옮겨 와 줄인 것입니다. 전문가 모델을 읽기 전용으로만 부르므로
+구현 라운드, 쓰기 샌드박스, 재개(resume), 리스, 요청 전체 마스킹(maskTransport)은 가져오지 않았습니다.
+`scripts/brief.mjs`의 hyperfusion brief 변환은 아직 설치된 hyperfusion을 그대로 씁니다(v2 설계의 9단계에서 걷어 냄).
 
 - 저장소: https://github.com/prentice7725/hyperfusion
-- 라이선스: MIT License
+- 라이선스: MIT License, Copyright (c) 2026 prentice7725
+
+| hf-game-studio | 원본 |
+|---|---|
+| scripts/lib/cli.mjs | scripts/adapters/common.mjs (probe, hasOption, extractResult, 읽기 전용 지시문, 비밀 경로) |
+| scripts/lib/adapters/codex.mjs | scripts/adapters/codex.mjs, scripts/codex-sandbox.mjs (Windows 샌드박스 진단) |
+| scripts/lib/adapters/agy.mjs | scripts/adapters/antigravity.mjs, scripts/adapters/agy-model.mjs |
+| scripts/lib/adapters/grok.mjs | scripts/adapters/grok.mjs |
+| scripts/lib/redaction.mjs | scripts/redaction.mjs |
+| scripts/lib/env.mjs | scripts/worker-env.mjs |
+| scripts/lib/platform.mjs | scripts/platform.mjs |

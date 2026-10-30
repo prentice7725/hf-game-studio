@@ -1,0 +1,80 @@
+import {isIP} from 'node:net';
+
+const placeholder=kind=>`[REDACTED:${kind}]`;
+const SECRET_FIELD=/^(?:[\w.-]+[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization|private[_-]?key)$/i;
+export const isSecretField=key=>SECRET_FIELD.test(key);
+// 경로·식별자 필드는 가리면 뜻이 사라지므로, 여기에 비밀값이 섞이면 가리지 않고 실패시킨다.
+const CONTROL_FIELD=new Set(['task_id','repo_root','id','file','files','paths']);
+
+// 이미지 해상도 표기 파일명(icon@16.png, logo@2x.png, hero@1.5x.webp)은 이메일이 아니다. 도메인 자리가 "해상도 표기.이미지 확장자"이고,
+// png 같은 확장자는 최상위 도메인이 아니라서 이 모양의 주소는 존재할 수 없다. 이메일로 오인하면 파일 경로가 통째로 지워져
+// 일꾼이 어느 파일인지 모르게 되고, scope.paths·files_changed에서는 "rename it before dispatch"로 디스패치가 막힌다.
+// 좁게 잡는다: alice@example.com.txt처럼 실제 이메일이 든 파일명은 그대로 마스킹한다.
+const DENSITY_IMAGE_DOMAIN=/^\d+(?:\.\d+)?x?\.(?:png|apng|jpe?g|gif|webp|avif|bmp|ico|icns|tiff?|heic|heif|svg|jxl)$/i;
+const isImageDensityName=match=>DENSITY_IMAGE_DOMAIN.test(match.slice(match.lastIndexOf('@')+1));
+
+// Transport-only filtering. Local provenance artifacts stay unchanged; audit never stores originals.
+export function redactText(text,counts={}, {preserveLines=false}={}) {
+ // Evidence pointers refer to raw string line numbers, including masked blocks.
+ const replacement=(match,masked)=>preserveLines
+  ?masked+'\n'.repeat(Math.max(0,(match.match(/\n/g)??[]).length-(masked.match(/\n/g)??[]).length))
+  :masked;
+ if(text.length>8*1024*1024)throw Object.assign(Error('Redaction text size limit exceeded'),{code:'REDACTION_UNSAFE'});
+ const replace=(kind,pattern,filter=()=>true)=>{
+  text=text.replace(pattern,match=>{
+   if(!filter(match))return match;
+   counts[kind]=(counts[kind]??0)+1;
+   return replacement(match,placeholder(kind));
+  });
+ };
+ replace('private-key',/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z]+ )?PRIVATE KEY-----|$)/g);
+ replace('api-key',/\b(?:sk-(?:ant-api\d+-|proj-)?[A-Za-z0-9_-]{16,}|xai-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{30,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16})\b/g);
+ replace('token',/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g);
+ text=text.replace(/(\b[a-z][a-z0-9+.-]{0,31}:\/\/)([^\s/@]+:[^\s/@]+)@/gi,(m,p)=>{
+  counts.secret=(counts.secret??0)+1;return replacement(m,p+placeholder('secret')+'@');
+ });
+ text=text.replace(/(\bBearer\s+)([A-Za-z0-9._~+\/-]+=*)/gi,(m,p)=>{
+  counts.token=(counts.token??0)+1;return replacement(m,p+placeholder('token'));
+ });
+ // Quoted JSON/shell/diff assignments, including spaces inside quoted passwords.
+ text=text.replace(/(\\"(?:[\w.-]{1,64}[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization)\\"\s*:\s*\\")[\s\S]*?(\\")/gi,(m,p,end)=>{
+  counts.secret=(counts.secret??0)+1;return replacement(m,p+placeholder('secret')+end);
+ });
+ text=text.replace(/((?:["']?\b(?:[\w.-]{1,64}[_-])?(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|refresh[_-]?token|token|authorization)\b["']?)\s*[:=]\s*)("(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}&]+)/gi,(m,p,v)=>{
+  // A preceding pass may have masked only part of this value. Mask the whole
+  // assignment even when it already contains a placeholder (including user input).
+  counts.secret=(counts.secret??0)+1;
+  const quote=/^["']/.test(v)?v[0]:'';
+  return replacement(m,p+quote+placeholder('secret')+quote);
+ });
+ replace('email',/[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,253}[A-Za-z0-9])?\.[A-Za-z]{2,63}/g,match=>!isImageDensityName(match));
+ // IPv6, including compressed and IPv4-mapped forms. Validate candidates to avoid model/version matches.
+ replace('ip',/(?<![\w:])(?:[A-Fa-f0-9]{0,4}:){2,7}(?:(?:\d{1,3}\.){3}\d{1,3}|[A-Fa-f0-9]{1,4})?(?:%[\w.-]+)?(?![\w:])/g,v=>isIP(v.split('%')[0])===6);
+ replace('ip',/\b(?:\d{1,3}\.){3}\d{1,3}\b/g,v=>isIP(v)===4);
+ return text;
+}
+
+export function redactValue(value,counts={},protectedValue=false,depth=0) {
+ if(depth>80)throw Object.assign(Error('Redaction input nesting limit exceeded'),{code:'REDACTION_UNSAFE'});
+ if(typeof value==='string'){
+  // Embedded JSON strings are common in previous results and diff snippets.
+  let masked;
+  try {
+   const parsed=JSON.parse(value);
+   if(parsed&&typeof parsed==='object')masked=JSON.stringify(redactValue(parsed,counts,protectedValue,depth+1));
+  }catch(e){if(e.code==='REDACTION_UNSAFE')throw e;}
+  masked??=redactText(value,counts);
+  if(protectedValue&&masked!==value)throw Object.assign(Error('Sensitive data in a required transport identifier or path; rename it before dispatch'),{code:'REDACTION_UNSAFE'});
+  return masked;
+ }
+ if(Array.isArray(value))return value.map(v=>redactValue(v,counts,protectedValue,depth+1));
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>{
+  const key=redactText(k,counts);
+  if(key!==k)throw Object.assign(Error('Sensitive data in a transport field name'),{code:'REDACTION_UNSAFE'});
+  if(isSecretField(k)&&v!==null&&v!==undefined&&v!==''){
+   counts.secret=(counts.secret??0)+1;return [k,placeholder('secret')];
+  }
+  return [k,redactValue(v,counts,protectedValue||CONTROL_FIELD.has(k),depth+1)];
+ }));
+ return value;
+}
