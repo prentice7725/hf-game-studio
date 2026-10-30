@@ -1,0 +1,31 @@
+# 출처 표기
+
+## Claude-Code-Game-Studios
+
+`roles/`의 역할 지시문과 `skills/gs-*`의 검토 스킬은 아래 프로젝트의 에이전트·스킬을 바탕으로 hf-game-studio에 맞게 줄이고 고쳐 쓴 것입니다.
+원본의 협업 절차(질문 우선, 파일 쓰기 승인), 디렉터 게이트, 설정 해석 훅은 가져오지 않았습니다.
+
+- 저장소: https://github.com/Donchitos/Claude-Code-Game-Studios
+- 라이선스: MIT License, Copyright (c) 2026 Donchitos
+
+| hf-game-studio | 원본 |
+|---|---|
+| roles/game-designer.md | .claude/agents/game-designer.md |
+| roles/systems-designer.md | .claude/agents/systems-designer.md |
+| roles/economy-designer.md | .claude/agents/economy-designer.md |
+| roles/writer.md | .claude/agents/writer.md |
+| roles/world-builder.md | .claude/agents/world-builder.md |
+| roles/technical-artist.md | .claude/agents/technical-artist.md |
+| roles/level-designer.md | .claude/agents/level-designer.md |
+| roles/ui-programmer.md | .claude/agents/ui-programmer.md |
+| roles/gameplay-programmer.md | .claude/agents/gameplay-programmer.md |
+| skills/gs-balance-check | .claude/skills/balance-check |
+| skills/gs-design-review | .claude/skills/design-review |
+| skills/gs-scope-check | .claude/skills/scope-check |
+
+## HyperFusion
+
+실행 엔진입니다. 이 저장소는 hyperfusion 코드를 포함하지 않고, 설치된 hyperfusion을 그대로 씁니다.
+
+- 저장소: https://github.com/prentice7725/hyperfusion
+- 라이선스: MIT License

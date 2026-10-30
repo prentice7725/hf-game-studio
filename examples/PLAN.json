@@ -1,0 +1,38 @@
+{
+  "name": "Brass & Claw M1 검증판",
+  "summary": "용병 1명 + 계약 1개 + 화면 1개로 hf-game-studio 파이프라인을 한 바퀴 돌려 본다.",
+  "sources": ["design/gdd.md", "design/glossary.md", "design/world.md", "design/art-bible.md"],
+  "team": [
+    {"member": "sonnet", "role": "핵심 구현·수치 데이터", "owns": ["code:medium|high", "tests"], "why": "계약 해결 공식과 데이터 검증이 까다로움"},
+    {"member": "antigravity", "role": "시나리오·대사·UI (Gemini Argon)", "owns": ["docs", "ui"], "why": "대사와 화면 작업"},
+    {"member": "grok", "role": "이미지 애셋", "owns": ["image-asset"], "why": "이미지 생성"},
+    {"member": "luna", "role": "쉬운 구현", "owns": ["code:low"], "why": "작은 수정은 빠르고 저렴하게"},
+    {"member": "sol", "role": "리뷰 전담", "owns": [], "why": "다른 계열의 교차 검증"}
+  ],
+  "excluded": [
+    {"member": "haiku", "why": "첫 마일스톤은 작업 수가 적어 예비 인력이 필요 없음"}
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "한 바퀴",
+      "goal": "용병 Ash가 곡물 수레 호위 계약을 받아 성공 확률을 보는 데까지",
+      "checkpoint": [
+        "data/*.json이 모두 스키마 검사를 통과",
+        "초상화가 매니페스트 규격 통과 + 사람 승인",
+        "계약 화면 스크린샷에서 계약 제목과 성공 확률이 보임"
+      ],
+      "tasks": [
+        {"id": "M1-T1-merc-data", "title": "용병 Ash 데이터", "kind": "code", "difficulty": "medium"},
+        {"id": "M1-T2-contract-intro", "title": "첫 계약 소개 대사", "kind": "docs"},
+        {"id": "M1-T3-merc-portrait", "title": "Ash 초상화", "kind": "image-asset"},
+        {"id": "M1-T4-contract-board", "title": "계약 게시판 화면", "kind": "ui", "difficulty": "medium"}
+      ]
+    }
+  ],
+  "risks": [
+    "Grok CLI 이미지 생성이 실제로 파일 저장까지 되는지 미검증(먼저 스모크 테스트)",
+    "계약 해결 공식이 GDD에 아직 TBD"
+  ],
+  "questions": ["성공 확률을 화면에 숫자로 보여 줄지, 등급(높음/보통/낮음)으로 보여 줄지?"]
+}

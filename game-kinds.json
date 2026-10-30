@@ -1,0 +1,103 @@
+{
+  "$comment": "게임 작업 종류(game_kind) → hyperfusion task_kind 매핑. hyperfusion의 task_kind는 6종으로 고정이라 게임 종류는 이 표로 내려 보낸다.",
+  "kinds": {
+    "gdd": {
+      "task_kind": "docs",
+      "role": "game-designer",
+      "allowed_actions": ["read", "edit"],
+      "constraints": [
+        "Edit only the design sections named in the objective; do not restructure the rest of the document.",
+        "Every number you introduce must also appear in the formula or table it belongs to, or be marked TBD."
+      ]
+    },
+    "narrative": {
+      "task_kind": "docs",
+      "role": "writer",
+      "allowed_actions": ["read", "edit"],
+      "verify": "schema",
+      "constraints": [
+        "Use only names, places and terms defined in the glossary and world docs; propose new ones under remaining_risks instead of inventing them silently."
+      ]
+    },
+    "lore": {
+      "task_kind": "docs",
+      "role": "world-builder",
+      "allowed_actions": ["read", "edit"],
+      "constraints": [
+        "New proper nouns must be added to the glossary in the same round, with a one-line definition."
+      ]
+    },
+    "balance-data": {
+      "task_kind": "code",
+      "difficulty": "medium",
+      "role": "systems-designer",
+      "allowed_actions": ["read", "edit", "test"],
+      "verify": "schema",
+      "require": ["schema"],
+      "constraints": [
+        "Data files are the source of truth for numbers; do not hard-code the same values in game code.",
+        "State the formula or curve behind each changed value in remaining_risks if it is not already documented."
+      ]
+    },
+    "economy-data": {
+      "task_kind": "code",
+      "difficulty": "medium",
+      "role": "economy-designer",
+      "allowed_actions": ["read", "edit", "test"],
+      "verify": "schema",
+      "require": ["schema"],
+      "constraints": [
+        "Every new resource needs at least one source (faucet) and one sink in the data you write or already present."
+      ]
+    },
+    "level": {
+      "task_kind": "code",
+      "role": "level-designer",
+      "allowed_actions": ["read", "edit", "test"],
+      "verify": "schema",
+      "constraints": []
+    },
+    "image-asset": {
+      "task_kind": "image-asset",
+      "role": "technical-artist",
+      "allowed_actions": ["read", "edit"],
+      "verify": "assets",
+      "require": ["assets_manifest"],
+      "constraints": [
+        "Save only the files listed in the asset manifest, at exactly those paths.",
+        "Follow the art bible for palette, outline and camera angle; use the reference images it names."
+      ]
+    },
+    "ui": {
+      "task_kind": "ui",
+      "role": "ui-programmer",
+      "allowed_actions": ["read", "edit", "test", "build"],
+      "verify": "screenshot",
+      "constraints": []
+    },
+    "gameplay-code": {
+      "task_kind": "code",
+      "role": "gameplay-programmer",
+      "allowed_actions": ["read", "edit", "test"],
+      "constraints": []
+    },
+    "tests": {
+      "task_kind": "tests",
+      "role": "gameplay-programmer",
+      "allowed_actions": ["read", "edit", "test"],
+      "constraints": []
+    },
+    "refactor": {
+      "task_kind": "refactor",
+      "role": "gameplay-programmer",
+      "allowed_actions": ["read", "edit", "test"],
+      "constraints": []
+    }
+  },
+  "context_docs": [
+    "design/glossary.md",
+    "design/world.md",
+    "design/gdd.md",
+    "design/art-bible.md"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "task_id": "M1-T1-merc-data",
+  "game_kind": "balance-data",
+  "objective": "Create the first mercenary, Ash, in data/mercenaries.json following design/gdd.md and the mercenaries schema.",
+  "scope": {"paths": ["data/mercenaries.json"]},
+  "schema": "design/schemas/mercenaries.schema.json",
+  "success_criteria": [
+    "AC1: data/mercenaries.json validates against design/schemas/mercenaries.schema.json and contains exactly one mercenary with id ash",
+    "AC2: Ash's stats total 15 so that she can pass a difficulty-3 contract about half the time under the GDD formula"
+  ],
+  "acceptance_map": {"AC1": ["@auto"]}
+}
