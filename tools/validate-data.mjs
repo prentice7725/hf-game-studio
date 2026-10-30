@@ -1,31 +1,60 @@
 #!/usr/bin/env node
 // 게임 데이터 JSON을 스키마로 검사한다. hyperfusion의 acceptance_commands에 넣어 컨트롤러가 직접 돌리는 용도다.
-// 사용법: node tools/hfgs/validate-data.mjs <스키마.json> <데이터.json> [데이터.json ...]
+// 사용법: node tools/hfgs/validate-data.mjs <스키마.json> <데이터.json> [데이터.json ...] [--expect <경로>=<JSON 값> ...]
+// --expect: 경로가 가리키는 값이 모두 그 값과 같아야 한다(하나도 없으면 실패). 데이터가 여러 개면 각 파일에 적용한다.
+//   예) --expect '/mercenaries/[id=ash]/hire_cost=120'
+//   이미 있는 파일을 고치는 작업은 스키마 검사가 처음부터 통과하므로, 바뀔 값을 이것으로 확인해야
+//   hyperfusion의 red-first(시작 전 실패 확인)를 통과한다.
 // 의존성 없이 돌도록 JSON Schema의 일부만 구현한다:
 //   type, enum, const, required, properties, additionalProperties(불리언), items, minItems, maxItems,
 //   minimum, maximum, minLength, maxLength, pattern, $ref(#/$defs/...)
 // 게임 데이터용 확장 키워드:
 //   x-uniqueBy: "id"          배열 원소의 해당 필드 값이 겹치면 안 된다
 //   x-ref: "/nodes/*/id"      문자열 값이 데이터 문서의 그 경로(*는 배열·객체 전체) 값 중 하나여야 한다
+// 경로 문법: "/a/*/b"에서 *는 모든 원소, [키=값]은 그 필드가 값과 같은 원소만 고른다(예: /mercenaries/[id=ash]).
 import fs from 'node:fs';
 import {pathToFileURL} from 'node:url';
 
 const typeOf=v=>v===null?'null':Array.isArray(v)?'array':Number.isInteger(v)?'integer':typeof v;
 const isType=(v,t)=>t==='number'?typeof v==='number'&&Number.isFinite(v):t==='integer'?Number.isInteger(v):typeOf(v)===t;
 
-// "/a/*/b" 형식의 경로로 문서에서 값들을 모은다.
+// "/a/*/b", "/a/[id=x]/b" 형식의 경로로 문서에서 값들을 모은다.
 export function collect(doc,pointer){
  let cur=[doc];
  for(const part of pointer.split('/').filter(Boolean)){
-  const next=[];
+  const next=[],filter=/^\[([^=\]]+)=(.*)\]$/.exec(part);
   for(const v of cur){
    if(v===null||typeof v!=='object')continue;
    if(part==='*')next.push(...Object.values(v));
+   else if(filter)next.push(...Object.values(v).filter(x=>x!==null&&typeof x==='object'&&String(x[filter[1]])===filter[2]));
    else if(Object.hasOwn(v,part))next.push(v[part]);
   }
   cur=next;
  }
  return cur;
+}
+
+// "<경로>=<JSON 값>"을 나눈다. 경로의 [키=값] 안에 있는 =는 구분자로 보지 않는다.
+export function parseExpect(spec){
+ let depth=0;
+ for(let i=0;i<spec.length;i++){
+  if(spec[i]==='[')depth++;
+  else if(spec[i]===']')depth--;
+  else if(spec[i]==='='&&depth===0){
+   const pointer=spec.slice(0,i),raw=spec.slice(i+1);
+   if(!pointer.startsWith('/'))break;
+   try{return {pointer,value:JSON.parse(raw)};}
+   catch{throw Error(`--expect 값이 JSON이 아님: ${raw} (문자열은 "..."로 감쌀 것)`);}
+  }
+ }
+ throw Error(`--expect 형식은 /경로=JSON값: ${spec}`);
+}
+
+export function checkExpect(data,{pointer,value}){
+ const found=collect(data,pointer);
+ if(!found.length)return [`${pointer}: 값이 없음`];
+ const want=JSON.stringify(value);
+ return found.filter(v=>JSON.stringify(v)!==want).map(v=>`${pointer}: ${JSON.stringify(v)}, 기대 ${want}`);
 }
 
 function resolveRef(root,ref){
@@ -87,14 +116,21 @@ function readJson(file){
 }
 
 if(import.meta.url===pathToFileURL(process.argv[1]).href){
- const [schemaFile,...files]=process.argv.slice(2);
- if(!schemaFile||!files.length){console.error('사용법: validate-data.mjs <스키마.json> <데이터.json> [...]');process.exit(2);}
+ const args=process.argv.slice(2),positional=[],expects=[];
+ try{
+  for(let i=0;i<args.length;i++){
+   if(args[i]==='--expect'){if(args[i+1]===undefined)throw Error('--expect에 값이 없음');expects.push(parseExpect(args[++i]));}
+   else positional.push(args[i]);
+  }
+ }catch(e){console.error(e.message);process.exit(2);}
+ const [schemaFile,...files]=positional;
+ if(!schemaFile||!files.length){console.error('사용법: validate-data.mjs <스키마.json> <데이터.json> [...] [--expect /경로=JSON값]');process.exit(2);}
  let failed=false;
  try{
   const schema=readJson(schemaFile);
   for(const f of files){
    let errors;
-   try{errors=validate(schema,readJson(f));}catch(e){errors=[e.message];}
+   try{const data=readJson(f);errors=[...validate(schema,data),...expects.flatMap(x=>checkExpect(data,x))];}catch(e){errors=[e.message];}
    if(errors.length){failed=true;console.error(`FAIL ${f}`);for(const e of errors.slice(0,50))console.error('  '+e);if(errors.length>50)console.error(`  ... 외 ${errors.length-50}건`);}
    else console.log(`OK ${f}`);
   }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {compile,loadKinds,roleDirectives,quote,checkWithHyperfusion,STUDIO_ROOT} from '../scripts/brief.mjs';
+import {compile,loadKinds,roleDirectives,quote,checkWithHyperfusion,insideRepo,defaultOut,STUDIO_ROOT} from '../scripts/brief.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','briefs',name)));
 const HF_KINDS=['code','ui','image-asset','tests','refactor','docs'];
@@ -42,10 +42,46 @@ test('image-asset: 매니페스트 검사는 파일별 --only',()=>{
  assert.deepEqual(b.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
 });
 
-test('ui: 스크린샷 명령은 공백·# 있는 인자를 따옴표로 감싼다',()=>{
+test('ui: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싼다',()=>{
  const b=compile(example('contract-board-ui.json'),{repo:repoWithDocs()});
  assert.equal(b.task_kind,'ui');
- assert.equal(b.acceptance_commands[0],'node tools/hfgs/screenshot.mjs --url http://localhost:5173 --selector "#contract-board" --expect-text "곡물 수레 호위" --name M1-T4-contract-board');
+ assert.equal(b.acceptance_commands[0],'node tools/hfgs/screenshot.mjs --serve "npm run dev" --url http://localhost:5173 --selector "#contract-board" --expect-text "곡물 수레 호위" --name M1-T4-contract-board');
+});
+
+test('ui: 로컬 서버 주소에 serve가 없으면 거절(일꾼이 띄운 서버는 검사 때 꺼져 있음)',()=>{
+ const g=example('contract-board-ui.json');
+ delete g.screenshot.serve;
+ assert.throws(()=>compile(g,{repo:repoWithDocs()}),/serve가 없음/);
+ assert.throws(()=>compile({...g,screenshot:{...g.screenshot,url:'http://localhost'}},{repo:repoWithDocs()}),/serve가 없음/);
+ g.screenshot.url='https://example.com/game';
+ assert.doesNotThrow(()=>compile(g,{repo:repoWithDocs()}),'원격 주소는 serve 없이 허용');
+});
+
+test('expect는 --expect 인자로 들어간다',()=>{
+ const g={...example('merc-data.json'),expect:{'/mercenaries/[id=ash]/hire_cost':120,'/mercenaries/[id=ash]/name':'애쉬'}};
+ const b=compile(g,{repo:repoWithDocs()});
+ assert.equal(b.acceptance_commands[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/[id=ash]/hire_cost=120" --expect "/mercenaries/[id=ash]/name=\\"애쉬\\""');
+ assert.throws(()=>compile({...g,expect:{'hire_cost':1}}),/\/로 시작/);
+});
+
+test('이미 있는 파일을 형식 검사만으로 고치면 red-first 경고',()=>{
+ const repo=repoWithDocs(),warnings=[];
+ fs.mkdirSync(path.join(repo,'data'));
+ fs.writeFileSync(path.join(repo,'data','mercenaries.json'),'{}');
+ compile(example('merc-data.json'),{repo,warn:m=>warnings.push(m)});
+ assert.ok(warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')));
+ warnings.length=0;
+ compile({...example('merc-data.json'),expect:{'/version':2}},{repo,warn:m=>warnings.push(m)});
+ assert.ok(!warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')),'expect가 있으면 경고하지 않음');
+ compile(example('merc-portrait.json'),{repo,warn:m=>warnings.push(m)});
+ assert.ok(!warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')),'새 파일 생성은 경고하지 않음');
+});
+
+test('기본 출력은 저장소 밖, 저장소 안 여부 판정',()=>{
+ const repo=repoWithDocs();
+ assert.equal(insideRepo(defaultOut('T1'),repo),false);
+ assert.equal(insideRepo(path.join(repo,'BRIEF.json'),repo),true);
+ assert.equal(insideRepo(repo+'-other/BRIEF.json',repo),false);
 });
 
 test('narrative는 docs로, Gemini Argon 우선 배치 대상',()=>{
