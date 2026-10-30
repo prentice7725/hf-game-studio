@@ -18,6 +18,9 @@ const HERE=path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT=path.resolve(HERE,'..');
 // setup.mjs가 게임 저장소에 검사 도구를 복사하는 위치. 수용 명령은 저장소 기준 상대 경로로 돈다.
 export const TOOLS_DIR='tools/hfgs';
+// 이보다 큰 설계 문서는 통째로 읽히지 않게 한다. Claude Code의 Read는 한 번에 약 2.5만 토큰까지라
+// 큰 문서는 읽기가 실패해 나눠 다시 읽고, 일꾼·라운드마다 반복되면 토큰이 크게 늘어난다(원본 템플릿 #64, #136).
+export const LARGE_DOC_BYTES=40*1024;
 // 게임 brief에서 hyperfusion brief로 그대로 넘기는 필드.
 const PASSTHROUGH=['acceptance_timeout_ms','acceptance_artifacts','acceptance_baseline_green','verification','executor_bash_rules','prior_experience'];
 
@@ -36,6 +39,49 @@ export function roleDirectives(role,root=STUDIO_ROOT){
 export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:JSON.stringify(s);
 
 function fail(m){throw Error(m);}
+
+// 마크다운 제목과 그 섹션의 줄 범위(1부터, 끝 포함). 코드 블록 안의 #은 제목으로 보지 않는다.
+// 섹션은 다음에 오는 같은 단계 이상의 제목 직전까지다(하위 섹션 포함).
+export function sections(text){
+ const lines=text.split(/\r?\n/),found=[];
+ let fence=null;
+ lines.forEach((l,i)=>{
+  const f=/^\s*(```|~~~)/.exec(l);
+  if(f){fence=fence===null?f[1]:(fence===f[1]?null:fence);return;}
+  if(fence!==null)return;
+  const h=/^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l);
+  if(h)found.push({title:h[2].trim(),level:h[1].length,start:i+1});
+ });
+ const last=lines.length-(lines.at(-1)===''?1:0);
+ return found.map((h,i)=>{
+  const next=found.slice(i+1).find(x=>x.level<=h.level);
+  return {...h,end:next?next.start-1:last};
+ });
+}
+
+// 단일 원본 문서를 어떻게 읽을지 일꾼에게 줄 지시문을 만든다.
+// context_sections에 섹션을 적은 문서는 그 섹션만, 작은 문서는 통째로, 큰 문서는 제목만 보고 필요한 섹션만 읽게 한다.
+export function docDirectives(docs,picked,{repo,warn}){
+ const out=[],full=[];
+ for(const d of docs){
+  const file=path.join(repo,d),text=fs.readFileSync(file,'utf8'),size=Buffer.byteLength(text);
+  const want=picked[d];
+  if(want){
+   const all=sections(text);
+   const ranges=want.map(name=>{
+    const hit=all.find(x=>x.title===name);
+    if(!hit)fail(`context_sections: ${d}에 "${name}" 섹션이 없음 (있는 제목: ${all.map(x=>x.title).join(', ')||'없음'})`);
+    return `"${name}" lines ${hit.start}-${hit.end}`;
+   });
+   out.push(`Read only these sections of ${d}: ${ranges.join(', ')}. Line numbers are as of this brief; if the file changed, find the headings again with grep -n '^#' ${d}. Do not read the rest of the file.`);
+  }else if(size>LARGE_DOC_BYTES){
+   warn(`${d}는 ${Math.round(size/1024)}KB라 통째로 읽히지 않게 했음: context_sections에 필요한 섹션을 적으면 일꾼이 찾는 수고도 줄어듦`);
+   out.push(`${d} is large (${Math.round(size/1024)} KB): list its headings with grep -n '^#' ${d} and read only the sections this task needs. Never read the whole file.`);
+  }else full.push(d);
+ }
+ if(full.length)out.unshift(`Read in full: ${full.join(', ')}.`);
+ return out;
+}
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
 export function autoAcceptance(input,kind){
@@ -91,7 +137,12 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
   if(input[k]&&input.scope.paths.includes(input[k]))fail(`${k}(${input[k]})가 scope.paths에 있음: 검사 기준은 일꾼이 고칠 수 없게 범위 밖에 둘 것`);
 
  const role=input.role===undefined?kind.role:input.role;
- const docs=(input.context_docs??table.context_docs).filter(d=>{
+ const picked=input.context_sections??{};
+ if(typeof picked!=='object'||Array.isArray(picked)||!Object.values(picked).every(v=>Array.isArray(v)&&v.length&&v.every(str)))
+  fail('context_sections는 {"문서 경로": ["섹션 제목", ...]} 형식');
+ for(const d of Object.keys(picked))if(!fs.existsSync(path.join(repo,d)))fail(`context_sections의 문서가 없음: ${d}`);
+ // 섹션을 고른 문서는 context_docs에 없어도 읽을 문서로 넣는다.
+ const docs=[...new Set([...(input.context_docs??table.context_docs),...Object.keys(picked)])].filter(d=>{
   const ok=fs.existsSync(path.join(repo,d));
   if(!ok)warn(`단일 원본 문서 없음(건너뜀): ${d}`);
   return ok;
@@ -99,7 +150,7 @@ export function compile(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{}}=
  const constraints=[
   ...kind.constraints,
   ...(role?roleDirectives(role,root):[]),
-  ...(docs.length?[`Single source of truth: read ${docs.join(', ')} before editing and follow them. If they conflict with this brief, return needs_decision.`]:[]),
+  ...(docs.length?[`Single source of truth: the design docs below override your assumptions. If they conflict with this brief, return needs_decision.`,...docDirectives(docs,picked,{repo,warn})]:[]),
   ...(input.constraints??[])
  ];
 
@@ -184,4 +235,4 @@ async function main(){
  console.log(outFile);
 }
 
-if(import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(e=>{console.error('오류: '+e.message);process.exit(1);});
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(e=>{console.error('오류: '+e.message);process.exit(1);});

@@ -116,6 +116,7 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 | `game_kind` | 위 표의 게임 작업 종류 |
 | `role` | 역할 덮어쓰기. `null`이면 역할 지시문을 넣지 않음 |
 | `context_docs` | 일꾼이 먼저 읽을 단일 원본 문서. 기본은 `design/` 네 문서 중 있는 것 |
+| `context_sections` | 문서별로 읽을 섹션 제목. `{"design/gdd.md": ["규칙", "수치와 공식"]}`. 아래 "설계 문서 읽기" 참고 |
 | `schema`, `data_files` | 데이터 스키마 검사. `data_files`를 생략하면 `scope.paths`의 `.json` |
 | `expect` | 바뀌어야 할 값. `{"/mercenaries/[id=ash]/hire_cost": 120}`처럼 경로와 JSON 값. `[키=값]`은 그 필드가 같은 원소를 고름 |
 | `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 `.png` |
@@ -129,6 +130,24 @@ hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
 - `schema`(+ `expect`), `assets_manifest`, `screenshot`으로 `acceptance_commands`를 만듭니다.
 - 이미 있는 파일을 형식 검사만으로 고치는 작업이면 경고합니다(아래 red-first).
 - 검사 기준 파일(`schema`, `assets_manifest`)이 `scope.paths`에 있으면 거절합니다. 일꾼이 기준을 느슨하게 고쳐 통과하는 것을 막기 위해서입니다.
+
+### 설계 문서 읽기: 섹션 단위로
+
+모든 일꾼이 매 작업마다 설계 문서를 통째로 읽으면 문서가 커질수록 토큰이 빠르게 늘어납니다. 원본 템플릿에서는 GDD 하나가 1.7MB(약 45만 토큰)까지 커져 주간 한도를 3일 만에 다 쓴 사례가 있습니다([#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). Claude Code의 Read는 한 번에 약 2.5만 토큰까지라, 큰 문서는 읽기가 실패해 나눠 다시 읽느라 비용이 두 배쯤 듭니다([#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64)). 여러 일꾼이 돌고 반려 때마다 다시 읽는 hyperfusion에서는 이 비용이 더 커집니다.
+
+그래서 컴파일러는 문서마다 읽는 방식을 정해 일꾼에게 지시합니다.
+
+| 문서 | 일꾼 지시 |
+|---|---|
+| `context_sections`에 섹션을 적은 문서 | 그 섹션의 줄 범위만 읽음(컴파일 시점의 범위를 brief에 적어 줌) |
+| 섹션을 안 적은 40KB 이하 문서 | 통째로 읽음 |
+| 섹션을 안 적은 40KB 초과 문서 | 제목만 `grep`으로 보고 필요한 섹션만 읽음. 통째 읽기 금지(컴파일 시 경고) |
+
+```json
+"context_sections": {"design/gdd.md": ["규칙", "수치와 공식"]}
+```
+
+섹션은 다음에 오는 같은 단계 이상의 제목 직전까지이고, 하위 섹션을 포함합니다. 없는 섹션 이름을 적으면 있는 제목 목록과 함께 거절합니다. 리드용 `gs-*` 검토 스킬도 같은 방식으로 섹션만 읽습니다.
 
 ### red-first: 이미 있는 파일을 고치는 작업
 

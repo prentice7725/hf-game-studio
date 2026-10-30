@@ -40,7 +40,7 @@ export function install(repo,{force=false,root=STUDIO_ROOT,log=console.log}={}){
  return done;
 }
 
-if(import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const args=process.argv.slice(2),force=args.includes('--force'),repo=args.find(a=>!a.startsWith('--'));
  if(!repo){console.error('사용법: setup.mjs <게임 저장소> [--force]');process.exit(2);}
  try{
