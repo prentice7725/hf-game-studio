@@ -10,7 +10,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 
 ## 처음 한 번
 
-1. `node $HFGS/scripts/setup.mjs $REPO`: 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)을 깐다. 있는 파일은 덮어쓰지 않는다. 웹 프로토타입 단계면 `--phaser`를 붙여 `prototype/`에 Phaser 4 템플릿을 깔고 그 안에서 `npm install`을 한다(스크린샷 검사용 Playwright는 저장소 루트에 `npm i -D playwright && npx playwright install chromium`).
+1. `node $HFGS/scripts/setup.mjs $REPO`: 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)을 깐다. 있는 파일은 덮어쓰지 않는다. 웹 프로토타입 단계면 `--phaser`를 붙여 `prototype/`에 Phaser 4 템플릿을 깔고 그 안에서 `npm install`을 한다(스크린샷 검사용 Playwright는 저장소 루트에 `npm i -D playwright && npx playwright install chromium`). Godot 본편 단계면 `--godot`을 붙여 루트에 Godot 4.7 템플릿을 깔고, `node tools/hfgs/godot-addons.mjs .`로 애드온(gdUnit4, Dialogic 2, Aseprite Wizard)을 받고, `GODOT_BIN`을 Godot 4.7 실행 파일로 둔다.
 2. 사용자와 `design/glossary.md`, `design/world.md`, `design/gdd.md`, `design/art-bible.md`를 채운다. 모든 모델이 읽는 단일 원본이다. 비어 있으면 모델마다 세계관과 수치를 지어낸다. 결과물 형식은 `design/schemas/*.schema.json`과 `design/asset-manifest.json`에 먼저 적는다. 이 파일들이 수용 검사의 기준이 된다.
 3. 전문가가 준비됐는지 본다: `codex`(리뷰)·`agy`(Argon 글쓰기)가 설치·로그인되어 있는지, asset-pipeline MCP가 Claude Code에 등록되어 있는지(`asset_capabilities`로 확인).
 4. 마일스톤은 `$HFGS/examples/milestone-1.md`처럼 작게(용병 1명 + 계약 1개 + 화면 1개) 작업 목록으로 적고 사용자 승인을 받는다. 게이트는 이것 하나다.
@@ -45,8 +45,8 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 | sfx | asset-pipeline | sound-designer | WAV 매니페스트 | `assets_manifest`, `asset_pipeline` |
 | web-prototype | Claude (Phaser 4, `prototype/`) | ui-programmer | 스크린샷(`screenshot` 있을 때) + `acceptance_commands`의 Vitest | |
 | code | Claude | gameplay-programmer | `acceptance_commands`의 테스트 | |
-
-Godot 장면·코드 종류는 7단계(Godot 템플릿)에서 추가한다.
+| godot-code | Claude (Godot 4.7, 루트) | gameplay-programmer | `godot-check.mjs all`(문법+gdUnit4+헤드리스 부팅, `GODOT_BIN` 필요) | |
+| godot-scene | Claude (Godot 4.7) | ui-programmer | `godot-check.mjs all`; 화면은 `shot` 프레임을 사람이 봄 | |
 
 ## 규칙
 
@@ -56,6 +56,7 @@ Godot 장면·코드 종류는 7단계(Godot 템플릿)에서 추가한다.
 - **대사는 JSON이 원본, Dialogic은 변환물.** 대사는 `design/schemas/dialogue.schema.json` 형식이다. 화자와 등장·퇴장 인물은 용어집 ID(Dialogic 캐릭터 파일 이름과 같음)이고, 화자가 없으면 서술이다. `enter`는 대사 앞, `exit`는 대사 뒤이고 `exit`는 선택지와 함께 쓸 수 없다. 대사에 Dialogic 문법 기호(`[ ] { } < >`, 선택지는 `|`도)를 쓰지 않는다. `.dtl`은 `tools/hfgs/dialogue-to-dtl.mjs`로 만들고 직접 고치지 않는다.
 - **asset-pipeline.** `asset_pipeline`에 `project_id`, `output_class`(`NONPIXEL_IMAGE`·`PIXEL_STATIC`·`SFX`), SFX는 `duration_seconds`를 적는다. 참조 편집(art-edit)은 ComfyUI 워크플로가 모두 text-to-image라 `workflow_id`(`codex_imagegen`·`grok_imagine`)와 `reference_image`를 함께 적는다. `PIXEL_STATIC`은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉽다(plan이 경고). 결과는 asset-pipeline에서도 REVIEW_REQUIRED 후보이므로 사람 승인 규칙이 그대로다.
 - **웹 프로토타입은 버린다.** `prototype/`(templates/phaser)에서 핵심 루프만 만든다. 규칙은 `src/rules/` 순수 함수 + Vitest, 글자 UI는 DOM 패널 `#hud`(스크린샷 검사가 읽음), 수치·대사는 `data/`에서 읽는다. 작업 파일의 검사는 `screenshot.serve: "npm --prefix prototype run dev"`, `selector: "#hud"`, `acceptance_commands: ["npm --prefix prototype test"]`. 남기는 것은 재미 판정, 데이터, 대사, 설계 수정이고 코드는 Godot으로 옮기지 않는다.
+- **Godot 본편.** 규칙은 `scripts/rules/`의 static 함수 + gdUnit4이고 프로토타입의 공식과 같은 숫자를 내야 한다. 대사를 바꿨으면 `dialogue-to-dtl.mjs ... --out-dir dialogue`로 `.dtl`을 다시 만든다(`.dtl`은 고치지 않는다). 화자 ID와 같은 이름의 Dialogic 캐릭터(`.dch`)와 에디터 작업은 사람이 한다(Godot MCP는 8단계에서 평가). `godot-check.mjs shot`의 프레임은 사람이 보는 용도이고 픽셀 비교는 하지 않는다.
 - **오디오는 효과음만.** 음악·음성 생성은 없으므로 사양서(gdd)로만 다룬다.
 - **작게 시작.** 첫 마일스톤은 `examples/milestone-1.md` 크기로 한다. 원본 템플릿(Claude-Code-Game-Studios)의 디렉터 게이트·GDD 섹션 강제·질문 우선 절차는 가져오지 않았다. 프로세스가 무거울수록 결과가 나빠졌다는 실측이 있다.
 

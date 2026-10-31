@@ -158,6 +158,10 @@ export function autoAcceptance(input,kind){
   const files=assetFiles(input);
   out.push(['node',`${TOOLS_DIR}/check-assets.mjs`,input.assets_manifest,...files.flatMap(f=>['--only',f])].map(quote).join(' '));
  }
+ // Godot: 문법 + gdUnit4 + 헤드리스 부팅. GODOT_BIN이 있어야 돈다(없으면 검사 도구가 종료 코드 2로 알린다).
+ if(kind.verify==='godot'){
+  out.push(['node',`${TOOLS_DIR}/godot-check.mjs`,'all',...(input.godot_project?['--project',input.godot_project]:[])].map(quote).join(' '));
+ }
  if(kind.verify==='screenshot'&&input.screenshot){
   const s=input.screenshot,args=['node',`${TOOLS_DIR}/screenshot.mjs`];
   const target=['url','file','electron'].filter(k=>s[k]!==undefined);

@@ -9,7 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,sections,dirtyPaths,hashFiles,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
-const VERIFIES=['schema','dialogue','assets','screenshot'];
+const VERIFIES=['schema','dialogue','assets','screenshot','godot'];
 
 // 설계 문서만 있는 폴더(plan용). git은 없다.
 function repoWithDocs(){
@@ -297,4 +297,15 @@ test('check·acTable·dirtyPaths·hashFiles',t=>{
  const p=plan(task,{repo:dir});
  assert.deepEqual(acTable(p,[{command:p.acceptance_commands[0],exit_code:0}]).map(a=>a.status),['pass','manual']);
  assert.deepEqual(acTable({...p,acceptance_map:undefined},[]).map(a=>a.status),['manual','manual']);
+});
+
+test('godot-code: godot-check all이 자동 검사, Godot 템플릿의 contract_rules.gd가 범위',()=>{
+ const repo=repoWithDocs(),p=plan(example('contract-rules-godot.json'),{repo});
+ assert.equal(p.owner,'claude');
+ assert.deepEqual(p.acceptance_commands,['node tools/hfgs/godot-check.mjs all']);
+ assert.deepEqual(p.acceptance_map,{AC1:p.acceptance_commands});
+ assert.ok(p.rules.some(r=>r.includes('identical to the web prototype')));
+ const sub=plan({...example('contract-rules-godot.json'),godot_project:'godot'},{repo});
+ assert.deepEqual(sub.acceptance_commands,['node tools/hfgs/godot-check.mjs all --project godot']);
+ assert.equal(loadKinds().kinds['godot-scene'].verify,'godot');
 });
