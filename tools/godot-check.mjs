@@ -2,7 +2,8 @@
 // Godot 프로젝트 검사. task.mjs의 수용 검사와 CI가 쓴다. Godot 실행 파일은 GODOT_BIN(또는 --godot)으로 받는다.
 // 사용법: node tools/hfgs/godot-check.mjs <syntax|test|run|shot|all> [--project DIR] [--godot BIN] [--out DIR]
 //   syntax  --import로 클래스 캐시를 만든 뒤 scripts/·test/의 .gd를 하나씩 --check-only로 파싱한다
-//   test    gdUnit4 CLI(--headless, --ignoreHeadlessMode)로 test/를 돈다. 종료 코드 0 성공, 100 실패, 101 경고(통과로 봄)
+//   test    gdUnit4 CLI(--headless, --ignoreHeadlessMode)로 test/를 돈다. 종료 코드 0 성공, 100 실패, 101 경고(통과로 봄).
+//           Godot 4.7.2가 테스트를 다 돌린 뒤 종료 시그널로 죽는 일이 있어(CI 실측), 그때는 gdUnit4가 찍은 "Exit code: N"을 쓴다
 //   run     헤드레스로 시작 장면을 몇 프레임 띄워 스크립트 오류가 없고 HFGS_READY 로그가 나오는지 본다
 //   shot    창을 띄워(리눅스는 xvfb-run) Movie Maker로 프레임 PNG를 남긴다. 사람이 보는 용도이고 픽셀 비교는 하지 않는다
 //   all     syntax + test + run (shot은 따로)
@@ -42,7 +43,7 @@ export function godot(bin,args,{project,timeoutMs=10*60*1000,spawn=spawnSync,pre
  const cmd=prefix.length?prefix[0]:bin,cmdArgs=prefix.length?[...prefix.slice(1),bin,...args]:args;
  const r=spawn(cmd,cmdArgs,{cwd:project,encoding:'utf8',timeout:timeoutMs,maxBuffer:64*1024*1024,windowsHide:true});
  if(r.error)throw Error(`Godot 실행 실패: ${r.error.code==='ETIMEDOUT'?`${Math.round(timeoutMs/1000)}초 시간 초과`:r.error.message}`);
- return {status:r.status,output:`${r.stdout??''}\n${r.stderr??''}`};
+ return {status:r.status,signal:r.signal??null,output:`${r.stdout??''}\n${r.stderr??''}`};
 }
 const tail=(s,n=1500)=>s.trim().slice(-n);
 
@@ -60,11 +61,18 @@ export function checkSyntax(bin,project,opts={}){
 
 export function runTests(bin,project,opts={}){
  if(!fs.existsSync(path.join(project,'addons','gdUnit4','plugin.cfg')))return [`gdUnit4가 없음: node tools/hfgs/godot-addons.mjs ${project} --only gdunit4`];
- // runtest.sh와 같은 인자. --remote-debug tcp://127.0.0.1:0은 파싱 오류 때 대화형 디버거가 멈추는 것을 막는다.
- const r=godot(bin,['--headless','--path',project,'-s','-d','--remote-debug','tcp://127.0.0.1:0',GDUNIT_TOOL,'--ignoreHeadlessMode','-a','res://test'],{project,...opts});
- if(r.status===0)return [];
- if(r.status===101){console.error('경고: gdUnit4가 경고로 끝남(101): '+tail(r.output,400));return [];}
- return [`gdUnit4 ${r.status===100?'실패':'종료 코드 '+r.status}: ${tail(r.output)}`];
+ // runtest.sh의 -d --remote-debug는 대화형 디버거(-d) 때문에 넣는 것이라 빼고 돈다. 4.7은 포트 0을 거부해 오류만 찍는다.
+ const r=godot(bin,['--headless','--path',project,'-s',GDUNIT_TOOL,'--ignoreHeadlessMode','-a','res://test'],{project,...opts});
+ let code=r.status;
+ if(code===null){
+  const printed=/Exit code: (\d+)/.exec(r.output);
+  if(!printed)return [`gdUnit4가 시그널 ${r.signal}로 끝났고 결과를 찍지 못함: ${tail(r.output)}`];
+  code=Number(printed[1]);
+  console.error(`경고: Godot이 테스트를 마친 뒤 시그널 ${r.signal}로 끝남. gdUnit4가 찍은 결과(Exit code: ${code})를 씀`);
+ }
+ if(code===0)return [];
+ if(code===101){console.error('경고: gdUnit4가 경고로 끝남(101): '+tail(r.output,400));return [];}
+ return [`gdUnit4 ${code===100?'실패':'종료 코드 '+code}: ${tail(r.output)}`];
 }
 
 export function checkRun(bin,project,opts={}){

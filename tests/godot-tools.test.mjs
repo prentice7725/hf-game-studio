@@ -19,7 +19,7 @@ fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');
 const mode=process.env.FAKE_GODOT??'ok';
 if(a.includes('--version')){console.log('4.7.2.stable.official');process.exit(0);}
 if(a.includes('--check-only')){const f=a[a.indexOf('--script')+1];if(mode==='syntax-error'&&f.includes('bad')){console.error('SCRIPT ERROR: Parse Error: Unexpected token');process.exit(1);}process.exit(0);}
-if(a.includes(${JSON.stringify(GDUNIT_TOOL)})){console.log('gdUnit4 run');process.exit(Number(process.env.FAKE_GDUNIT_EXIT??0));}
+if(a.includes(${JSON.stringify(GDUNIT_TOOL)})){const code=Number(process.env.FAKE_GDUNIT_EXIT??0);fs.writeSync(1,'gdUnit4 run\\nExit code: '+code+'\\n');if(mode==='crash-after')process.kill(process.pid,'SIGSEGV');process.exit(code);}
 if(a.includes('--quit-after')&&!a.includes('--write-movie')){if(mode==='boot-error')console.log('SCRIPT ERROR: Invalid call');else console.log('HFGS_READY mercenaries=1 contracts=2');process.exit(0);}
 if(a.includes('--write-movie')){const out=a[a.indexOf('--write-movie')+1];if(mode!=='no-frames')fs.writeFileSync(out.replace(/\\.png$/,'00000000.png'),'');process.exit(0);}
 process.exit(0);`,{mode:0o755});
@@ -83,9 +83,12 @@ test('test: gdUnit4가 없으면 안내, 종료 코드 0·101은 통과, 100은 
  assert.deepEqual(runTests(bin,dir),[]);
  const a=calls().at(-1);
  assert.ok(a.includes('--headless')&&a.includes(GDUNIT_TOOL)&&a.includes('--ignoreHeadlessMode')&&a[a.indexOf('-a')+1]==='res://test',JSON.stringify(a));
- assert.ok(a.includes('--remote-debug'),'파싱 오류 때 디버거가 멈추지 않게');
+ assert.ok(!a.includes('-d')&&!a.includes('--remote-debug'),'헤드리스에는 디버거 인자를 넣지 않는다');
  assert.deepEqual(withEnv({FAKE_GDUNIT_EXIT:'101'},()=>runTests(bin,dir)),[]);
  assert.match(withEnv({FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir))[0],/gdUnit4 실패/);
+ // Godot이 테스트를 마친 뒤 시그널로 죽으면 gdUnit4가 찍은 Exit code를 쓴다(CI 실측).
+ assert.deepEqual(withEnv({FAKE_GODOT:'crash-after'},()=>runTests(bin,dir)),[]);
+ assert.match(withEnv({FAKE_GODOT:'crash-after',FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir))[0],/gdUnit4 실패/);
 });
 
 test('run: HFGS_READY와 스크립트 오류를 본다',t=>{
