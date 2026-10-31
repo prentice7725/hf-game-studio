@@ -246,7 +246,9 @@ test('verify: 검사 통과 + 범위 안 변경이면 통과하고 리뷰 명령
  assert.ok(!warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')),'verify에서는 red-first 경고를 내지 않는다');
  assert.deepEqual(r.changed,['data/mercenaries.json']);
  assert.deepEqual(r.ac.map(a=>a.status),['pass','manual']);
- assert.match(r.review_command,new RegExp(`consult\\.mjs review --repo ${dir} --base ${state.head} --criteria "AC1: .*" --criteria "AC2: .*" --check "node tools/hfgs/validate-data\\.mjs .*"$`));
+ // 경로는 quote()를 거친다(Windows 경로의 역슬래시는 따옴표로 감싸져 나온다).
+ const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ assert.match(r.review_command,new RegExp(`consult\\.mjs"? review --repo ${rx(quote(dir))} --base ${state.head} --criteria "AC1: .*" --criteria "AC2: .*" --check "node tools/hfgs/validate-data\\.mjs .*"$`));
  const saved=JSON.parse(fs.readFileSync(stateFile(task.task_id,env),'utf8'));
  assert.equal(saved.verify.ok,true);
  assert.throws(()=>start(task,{repo:dir,env}),/이미 끝난 작업/);
