@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {checkSyntax,runTests,checkRun,takeShot,gdFiles,findGodot,shotPrefix,ERROR_PATTERN,GDUNIT_TOOL} from '../tools/godot-check.mjs';
 import {installAddons,enablePlugins,ADDONS} from '../tools/godot-addons.mjs';
 import {installGodot,GDIGNORE_DIRS} from '../scripts/setup.mjs';
@@ -24,7 +25,9 @@ if(a.includes('--quit-after')&&!a.includes('--write-movie')){if(mode==='boot-err
 if(a.includes('--write-movie')){const out=a[a.indexOf('--write-movie')+1];if(mode!=='no-frames')fs.writeFileSync(out.replace(/\\.png$/,'00000000.png'),'');process.exit(0);}
 process.exit(0);`,{mode:0o755});
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
- return {bin,calls:()=>fs.existsSync(log)?fs.readFileSync(log,'utf8').trim().split('\n').map(l=>JSON.parse(l)):[]};
+ // Windows는 셔뱅 스크립트를 직접 실행하지 못하므로 node로 돌리는 spawn을 끼운다(검사 도구의 spawn 주입).
+ const opts=process.platform==='win32'?{spawn:(cmd,args,o)=>spawnSync(process.execPath,[cmd,...args],o)}:{};
+ return {bin,opts,calls:()=>fs.existsSync(log)?fs.readFileSync(log,'utf8').trim().split('\n').map(l=>JSON.parse(l)):[]};
 }
 function godotProject(t,{addons=[]}={}){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-gproj-'));
@@ -64,49 +67,52 @@ test('gdFiles·findGodot',t=>{
 });
 
 test('syntax: --import 뒤 파일마다 --check-only, 파싱 오류를 잡는다',t=>{
- const {bin,calls}=fakeGodot(t),dir=godotProject(t);
- assert.deepEqual(checkSyntax(bin,dir),[]);
+ const {bin,calls,opts}=fakeGodot(t),dir=godotProject(t);
+ assert.deepEqual(checkSyntax(bin,dir,opts),[]);
  const c=calls();
  assert.deepEqual(c[0],['--headless','--path',dir,'--import']);
  assert.ok(c.slice(1).every(a=>a.includes('--check-only')&&a[a.indexOf('--script')+1].startsWith('res://')));
  assert.equal(c.length,1+gdFiles(dir).length);
  fs.writeFileSync(path.join(dir,'scripts','bad.gd'),'func (');
- const problems=withEnv({FAKE_GODOT:'syntax-error'},()=>checkSyntax(bin,dir));
+ const problems=withEnv({FAKE_GODOT:'syntax-error'},()=>checkSyntax(bin,dir,opts));
  assert.equal(problems.length,1);
  assert.match(problems[0],/^scripts\/bad\.gd: .*Parse Error/);
 });
 
 test('test: gdUnit4가 없으면 안내, 종료 코드 0·101은 통과, 100은 실패',t=>{
- const {bin,calls}=fakeGodot(t);
- assert.match(runTests(bin,godotProject(t))[0],/gdUnit4가 없음/);
+ const {bin,calls,opts}=fakeGodot(t);
+ assert.match(runTests(bin,godotProject(t),opts)[0],/gdUnit4가 없음/);
  const dir=godotProject(t,{addons:['gdUnit4']});
- assert.deepEqual(runTests(bin,dir),[]);
+ assert.deepEqual(runTests(bin,dir,opts),[]);
  const a=calls().at(-1);
  assert.ok(a.includes('--headless')&&a.includes(GDUNIT_TOOL)&&a.includes('--ignoreHeadlessMode')&&a[a.indexOf('-a')+1]==='res://test',JSON.stringify(a));
  assert.ok(!a.includes('-d')&&!a.includes('--remote-debug'),'헤드리스에는 디버거 인자를 넣지 않는다');
- assert.deepEqual(withEnv({FAKE_GDUNIT_EXIT:'101'},()=>runTests(bin,dir)),[]);
- assert.match(withEnv({FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir))[0],/gdUnit4 실패/);
+ assert.deepEqual(withEnv({FAKE_GDUNIT_EXIT:'101'},()=>runTests(bin,dir,opts)),[]);
+ assert.match(withEnv({FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir,opts))[0],/gdUnit4 실패/);
  // Godot이 테스트를 마친 뒤 시그널로 죽으면 gdUnit4가 찍은 Exit code를 쓴다(CI 실측).
- assert.deepEqual(withEnv({FAKE_GODOT:'crash-after'},()=>runTests(bin,dir)),[]);
- assert.match(withEnv({FAKE_GODOT:'crash-after',FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir))[0],/gdUnit4 실패/);
+ // Windows는 프로세스가 시그널로 죽는 것을 흉내 낼 수 없다(process.kill(pid,'SIGSEGV')가 ENOSYS). CI(리눅스)에서 본다.
+ if(process.platform!=='win32'){
+  assert.deepEqual(withEnv({FAKE_GODOT:'crash-after'},()=>runTests(bin,dir,opts)),[]);
+  assert.match(withEnv({FAKE_GODOT:'crash-after',FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir,opts))[0],/gdUnit4 실패/);
+ }
 });
 
 test('run: HFGS_READY와 스크립트 오류를 본다',t=>{
- const {bin}=fakeGodot(t),dir=godotProject(t);
- assert.deepEqual(checkRun(bin,dir),[]);
- const p=withEnv({FAKE_GODOT:'boot-error'},()=>checkRun(bin,dir));
+ const {bin,opts}=fakeGodot(t),dir=godotProject(t);
+ assert.deepEqual(checkRun(bin,dir,opts),[]);
+ const p=withEnv({FAKE_GODOT:'boot-error'},()=>checkRun(bin,dir,opts));
  assert.ok(p.some(x=>x.includes('스크립트 오류'))&&p.some(x=>x.includes('HFGS_READY')),JSON.stringify(p));
  assert.ok(ERROR_PATTERN.test('SCRIPT ERROR: x')&&!ERROR_PATTERN.test('Godot Engine v4.7.2'));
 });
 
 test('shot: 프레임 PNG가 생겨야 통과, 리눅스에서 DISPLAY가 없으면 xvfb-run',t=>{
- const {bin,calls}=fakeGodot(t),dir=godotProject(t),out=path.join(dir,'shots');
- const r=takeShot(bin,dir,out,{prefix:[]});
+ const {bin,calls,opts}=fakeGodot(t),dir=godotProject(t),out=path.join(dir,'shots');
+ const r=takeShot(bin,dir,out,{prefix:[],...opts});
  assert.deepEqual(r.problems,[]);
  assert.equal(r.files.length,1);
  const a=calls().at(-1);
  assert.ok(a.includes('--write-movie')&&a.includes('--rendering-driver')&&!a.includes('--headless'),JSON.stringify(a));
- const bad=withEnv({FAKE_GODOT:'no-frames'},()=>takeShot(bin,dir,out,{prefix:[]}));
+ const bad=withEnv({FAKE_GODOT:'no-frames'},()=>takeShot(bin,dir,out,{prefix:[],...opts}));
  assert.match(bad.problems[0],/PNG가 만들어지지 않음/);
  assert.deepEqual(shotPrefix({platform:'linux',env:{DISPLAY:':0'}}),[]);
  assert.deepEqual(shotPrefix({platform:'linux',env:{},has:()=>true}),['xvfb-run','-a']);
