@@ -151,9 +151,11 @@ test('art-edit: 참조 이미지와 workflow_id가 필수이고, 참조는 검�
  assert.throws(()=>plan({...g,asset_pipeline:{...ap,workflow_id:'Codex ImageGen'}},{repo}),/워크플로 ID/);
 });
 
-test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싼다',()=>{
+test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싸고, Vitest는 따로 돈다',()=>{
  const p=plan(example('contract-board-ui.json'),{repo:repoWithDocs()});
- assert.equal(p.acceptance_commands[0],'node tools/hfgs/screenshot.mjs --serve "npm run dev" --url http://localhost:5173 --selector "#contract-board" --expect-text "곡물 수레 호위" --name M1-T4-contract-board');
+ assert.equal(p.owner,'claude');
+ assert.deepEqual(p.acceptance_commands,['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url http://localhost:5173 --selector "#hud" --expect-text "곡물 수레 호위" --name M1-T4-contract-board']);
+ assert.deepEqual(p.acceptance_map,{AC1:[p.acceptance_commands[1]],AC2:[p.acceptance_commands[0]]});
  const g=example('contract-board-ui.json');
  delete g.screenshot.serve;
  assert.throws(()=>plan(g,{repo:repoWithDocs()}),/serve가 없음/);

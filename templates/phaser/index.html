@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>프로토타입</title>
+  <style>
+    /* 캔버스는 게임 화면, #hud는 그 옆의 DOM 패널이다. 프로토타입에서는 목록·대사 같은 텍스트 UI를 DOM으로 그려
+       스크린샷 검사(--expect-text)와 접근성 검사가 글자를 읽을 수 있게 한다. Godot 본편의 UI는 따로 만든다. */
+    html, body { margin: 0; background: #1b1b22; color: #e8e4d8; font: 16px/1.5 system-ui, sans-serif; }
+    main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; max-width: 1280px; margin: 0 auto; }
+    #game canvas { display: block; width: 100%; height: auto; }
+    #hud { background: #26262f; border-radius: 8px; padding: 16px; min-height: 200px; }
+    #hud h2 { margin: 0 0 8px; font-size: 18px; }
+    #hud .status { color: #9aa; font-size: 13px; }
+    #hud ul { list-style: none; padding: 0; margin: 0; }
+    #hud li { padding: 8px; border-radius: 6px; cursor: pointer; }
+    #hud li:hover, #hud li[aria-selected="true"] { background: #3a3a48; }
+    #hud .chance { float: right; color: #ffd26a; }
+    #dialogue { margin-top: 16px; padding: 12px; background: #1f1f28; border-radius: 6px; }
+    #dialogue .speaker { color: #ffd26a; margin-right: 8px; }
+    #dialogue button { display: block; width: 100%; margin-top: 6px; padding: 6px; background: #3a3a48; color: inherit; border: 0; border-radius: 4px; cursor: pointer; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="game"></div>
+    <aside id="hud" aria-live="polite"><p class="status">loading</p></aside>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

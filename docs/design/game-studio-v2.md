@@ -148,7 +148,7 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 | balance-data, economy-data, level | Claude | JSON 스키마(+ `expect`) | 있음 |
 | art-image, art-edit | asset-pipeline(리드가 MCP 호출) | 매니페스트 + 사람 승인 | 있음 |
 | sfx | asset-pipeline | WAV 매니페스트 + 사람 청취 | 있음 |
-| web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(Phaser 템플릿은 6단계) |
+| web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(템플릿 `templates/phaser/`) |
 | code | Claude | `acceptance_commands`의 테스트 | 있음 |
 | sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 | 5·10단계 뒤 |
 | godot-scene, godot-code | Claude (+ Godot MCP) | 문법 검사 + gdUnit4 + 스크린샷 | 7단계 |
@@ -169,7 +169,7 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 3. ✅ (PR 11) **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용, 결론 없이 diff와 검사 결과만 전달, 지적별 처분)와 `write`(agy Argon)를 만든다.
 4. ✅ (PR 12) **대사 파이프라인:** 대사 JSON 스키마, 용어집 검사, `dialogue-to-dtl.mjs` 변환기. narrative brief의 수용 검사는 이 `--check`로 자동 생성된다.
 5. **애셋 스크립트:** 매니페스트 항목(프롬프트, 종류, 길이)을 읽어 asset-pipeline MCP를 직접 부르는 `scripts/assets.mjs`를 만든다. 후보 여러 개 생성을 지원한다.
-6. **Phaser 템플릿:** `templates/phaser/`에 Phaser 4 + Vite + TypeScript, Vitest, Playwright 스크린샷, 데이터·대사 JSON 로더를 둔다.
+6. ✅ **Phaser 템플릿:** `templates/phaser/`에 Phaser 4.2 + Vite 8 + TypeScript, Vitest(규칙·대사 재생기), 데이터·대사 JSON 로더, DOM 패널(`#hud`)을 둔다. `setup.mjs --phaser`로 `prototype/`에 깐다. 스크린샷은 기존 `tools/hfgs/screenshot.mjs --serve`로 찍고, 글자 확인은 캔버스 픽셀이 아니라 DOM 패널로 한다(Phaser 4는 WebGL 전용이라 헤드리스 SwiftShader에서 픽셀 비교가 흔들림). CI 잡 `phaser-template`이 실제 설치·테스트·빌드·스크린샷을 돌린다.
 7. **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot, gdUnit4, Aseprite Wizard, Dialogic 2, 검사 스크립트(문법, 테스트, 스크린샷)를 둔다.
 8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
 9. ✅ (5~8보다 앞당겨 진행) **hyperfusion 의존 제거:** `brief.mjs`(hyperfusion brief 변환)를 `task.mjs`(plan·start·check·verify)로 바꾸고, `game-kinds.json`에서 task_kind 매핑을 걷어 내 종류를 직접 정의하고, setup의 hyperfusion 프리셋과 CI의 hyperfusion 체크아웃을 지웠다. red-first와 검사 기준 파일 불변 규칙은 `task.mjs`에 남겼다. 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어 앞당겼다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
@@ -177,6 +177,6 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 
 ## 남은 확인 거리
 
-- Phaser 쪽 에이전트 도구(Phaser Agent MCP)가 프로토타입에 쓸 만한지. 공식 사이트에 있다는 것만 확인했다.
+- Phaser 쪽 에이전트 도구(Phaser Agent MCP)가 프로토타입에 쓸 만한지. 공식 사이트에 있다는 것만 확인했다. 템플릿은 공식 생성기(`npm create @phaserjs/game`) 대신 직접 짠 최소 구성이다(생성기 결과물이 Vite 8·TS 설정과 맞는지 확인하지 않았다).
 - Dialogic 2 최신 릴리스가 Godot 4.7에서 문제없이 도는지. 문서상 요구 사항은 4.5 이상이다.
 - 2단계에서 hyperfusion 코드를 옮길 때 라이선스와 출처 표기(같은 저자이지만 NOTICE에 남긴다).

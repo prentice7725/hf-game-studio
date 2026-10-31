@@ -22,3 +22,44 @@ jobs:
       # start·verify 테스트가 실제 git 저장소를 만들어 커밋한다.
       - name: 테스트
         run: npm test
+
+  # 웹 프로토타입 템플릿을 실제로 깔아 설치·테스트·타입 검사·빌드·스크린샷 검사까지 돈다.
+  # 템플릿이 Phaser·Vite 새 버전에서 깨지면 여기서 드러난다. 저장소 밖 임시 폴더에 깐다.
+  phaser-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: 임시 게임 저장소에 설치
+        run: |
+          mkdir -p "$RUNNER_TEMP/game" && cd "$RUNNER_TEMP/game"
+          git init -q && git -c user.email=ci@example.invalid -c user.name=ci commit -q --allow-empty -m init
+          node "$GITHUB_WORKSPACE/scripts/setup.mjs" . --phaser
+          mkdir -p data/dialogue
+          echo '{"version":1,"mercenaries":[{"id":"ash","name":"애쉬","hire_cost":100,"stats":{"might":5,"wits":5,"grit":5}}]}' > data/mercenaries.json
+          echo '{"version":1,"contracts":[{"id":"grain-cart","title":"곡물 수레 호위","difficulty":3,"reward":120,"days":3,"check":"might","intro_dialogue":"contract-grain-cart"}]}' > data/contracts.json
+          echo '{"id":"contract-grain-cart","start":"n1","nodes":[{"id":"n1","speaker":"client","text":"곡물 수레를 호위해 주시오.","choices":[{"text":"맡겠다","next":"n2"}]},{"id":"n2","speaker":"ash","text":"보수는 선금으로."}]}' > data/dialogue/contract-grain-cart.json
+          node tools/hfgs/validate-data.mjs design/schemas/contracts.schema.json data/contracts.json
+          node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --check
+
+      - name: npm install, 테스트, 타입 검사, 빌드
+        working-directory: ${{ runner.temp }}/game/prototype
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run typecheck
+          npm run build
+          test -f dist/mercenaries.json
+
+      # 스크린샷 검사: 개발 서버를 도구가 띄우고 #hud에 계약 제목이 보이는지 확인한 뒤 서버를 끈다.
+      - name: Playwright 설치
+        working-directory: ${{ runner.temp }}/game
+        run: npm i -D --no-audit --no-fund playwright && npx playwright install --with-deps chromium
+
+      - name: 스크린샷 검사
+        working-directory: ${{ runner.temp }}/game/prototype
+        run: node ../tools/hfgs/screenshot.mjs --serve "npm run dev" --url http://localhost:5173 --selector "#hud" --expect-text "곡물 수레 호위" --name ci

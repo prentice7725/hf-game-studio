@@ -2,27 +2,33 @@
   "task_id": "M1-T4-contract-board",
   "kind": "web-prototype",
   "difficulty": "medium",
-  "objective": "Build the contract board screen that lists contracts from data/contracts.json and lets the player assign Ash to one.",
+  "objective": "Build the contract board in the Phaser prototype: list contracts from data/contracts.json in the #hud panel and show the success chance from src/rules/contract.ts when one is picked.",
   "scope": {
     "paths": [
-      "src/ui/contract-board.js",
-      "src/ui/contract-board.css",
-      "index.html"
+      "prototype/src/scenes/ContractBoardScene.ts",
+      "prototype/src/ui/hud.ts",
+      "prototype/src/main.ts"
     ]
   },
   "screenshot": {
-    "serve": "npm run dev",
+    "serve": "npm --prefix prototype run dev",
     "url": "http://localhost:5173",
-    "selector": "#contract-board",
+    "selector": "#hud",
     "expect_text": "곡물 수레 호위"
   },
   "success_criteria": [
-    "AC1: the contract board renders without console errors and shows the grain cart contract title",
-    "AC2: selecting the contract and pressing assign shows the success chance computed by src/rules/contract.js"
+    "AC1: the #hud panel lists the grain cart contract title without console errors",
+    "AC2: picking a contract shows the success chance computed by prototype/src/rules/contract.ts (unit tests pass)"
   ],
   "acceptance_map": {
     "AC1": [
       "@auto"
+    ],
+    "AC2": [
+      "npm --prefix prototype test"
     ]
-  }
+  },
+  "acceptance_commands": [
+    "npm --prefix prototype test"
+  ]
 }
