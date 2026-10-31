@@ -24,7 +24,9 @@
       "writer": "argon",
       "role": "writer",
       "verify": "dialogue",
-      "require": ["schema"],
+      "require": [
+        "schema"
+      ],
       "rules": [
         "Use only names, places and terms defined in the glossary and world docs; a new name is a question for the user, never a silent invention."
       ]
@@ -33,7 +35,9 @@
       "owner": "claude",
       "role": "systems-designer",
       "verify": "schema",
-      "require": ["schema"],
+      "require": [
+        "schema"
+      ],
       "rules": [
         "Data files are the source of truth for numbers; do not hard-code the same values in game code.",
         "State the formula or curve behind each changed value in the task note if it is not already documented."
@@ -43,7 +47,9 @@
       "owner": "claude",
       "role": "economy-designer",
       "verify": "schema",
-      "require": ["schema"],
+      "require": [
+        "schema"
+      ],
       "rules": [
         "Every new resource needs at least one source (faucet) and one sink in the data you write or already present."
       ]
@@ -59,8 +65,16 @@
       "owner": "asset-pipeline",
       "role": "technical-artist",
       "verify": "assets",
-      "require": ["assets_manifest"],
-      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"], "required": true},
+      "require": [
+        "assets_manifest"
+      ],
+      "pipeline": {
+        "output_classes": [
+          "NONPIXEL_IMAGE",
+          "PIXEL_STATIC"
+        ],
+        "required": true
+      },
       "rules": [
         "Save only the files listed in the asset manifest, at exactly those paths.",
         "Follow the art bible for palette, outline and camera angle; use the reference images it names."
@@ -71,8 +85,17 @@
       "owner": "asset-pipeline",
       "role": "technical-artist",
       "verify": "assets",
-      "require": ["assets_manifest"],
-      "pipeline": {"output_classes": ["NONPIXEL_IMAGE", "PIXEL_STATIC"], "required": true, "edit": true},
+      "require": [
+        "assets_manifest"
+      ],
+      "pipeline": {
+        "output_classes": [
+          "NONPIXEL_IMAGE",
+          "PIXEL_STATIC"
+        ],
+        "required": true,
+        "edit": true
+      },
       "rules": [
         "Save only the files listed in the asset manifest, at exactly those paths.",
         "Change only what the objective asks; everything else stays identical to the reference."
@@ -83,8 +106,15 @@
       "owner": "asset-pipeline",
       "role": "sound-designer",
       "verify": "assets",
-      "require": ["assets_manifest"],
-      "pipeline": {"output_classes": ["SFX"], "required": true},
+      "require": [
+        "assets_manifest"
+      ],
+      "pipeline": {
+        "output_classes": [
+          "SFX"
+        ],
+        "required": true
+      },
       "rules": [
         "Save only the files listed in the asset manifest, at exactly those paths."
       ]
@@ -97,6 +127,26 @@
       "rules": [
         "Rules logic lives in plain functions with unit tests; the scene only renders and forwards input.",
         "Read numbers, text and dialogue from the same data files Godot will read; never hard-code them."
+      ]
+    },
+    "godot-code": {
+      "$comment": "Godot 본편의 GDScript·C# 작업(규칙, 데이터 읽기, 시스템). 검사는 tools/hfgs/godot-check.mjs(문법 + gdUnit4 + 헤드리스 부팅)이고 GODOT_BIN이 필요하다.",
+      "owner": "claude",
+      "role": "gameplay-programmer",
+      "verify": "godot",
+      "rules": [
+        "Rules live in static functions under scripts/rules/ with gdUnit4 tests; scenes only draw and forward input.",
+        "Read numbers, text and dialogue from data/ and dialogue/; never hard-code them. Keep formulas identical to the web prototype's rules."
+      ]
+    },
+    "godot-scene": {
+      "$comment": "Godot 장면·UI 작업. 문법·테스트·부팅 검사는 같고, 화면은 godot-check.mjs shot의 프레임을 사람이 본다.",
+      "owner": "claude",
+      "role": "ui-programmer",
+      "verify": "godot",
+      "rules": [
+        "Scenes read game state from scripts/ and never compute rules themselves.",
+        "Put only approved assets into scenes; placeholders until the user approves."
       ]
     },
     "code": {

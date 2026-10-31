@@ -52,3 +52,9 @@ test('--phaser: 템플릿을 prototype/에 깔고, 있는 파일은 절대 덮�
  assert.match(pkg.dependencies.phaser,/^4\.2\./);
  assert.match(pkg.scripts.shot,/\.\.\/tools\/hfgs\/screenshot\.mjs/);
 });
+
+test('--godot: installGodot은 godot-tools.test.mjs에서 본다. 여기서는 plan()이 templates/godot을 기본 설치에 넣지 않는지만 확인',()=>{
+ const repo=gitRepo(),done=install(repo,{log:()=>{}});
+ assert.ok(!done.some(f=>f==='project.godot'||f.startsWith('scenes/')));
+ assert.ok(done.includes('tools/hfgs/godot-check.mjs')&&done.includes('tools/hfgs/godot-addons.mjs'),'검사 도구는 기본 설치');
+});

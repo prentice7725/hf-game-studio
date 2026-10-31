@@ -63,3 +63,54 @@ jobs:
       - name: 스크린샷 검사
         working-directory: ${{ runner.temp }}/game/prototype
         run: node ../tools/hfgs/screenshot.mjs --serve "npm run dev" --url http://localhost:5173 --selector "#hud" --expect-text "곡물 수레 호위" --name ci
+
+  # Godot 본편 템플릿을 실제 Godot 4.7.2로 검사한다: 애드온 설치(git 태그), 대사 변환, 문법·gdUnit4·헤드리스 부팅, xvfb 스크린샷.
+  # 세션 환경에서는 외부 바이너리 실행이 막혀 있어 이 잡이 Godot 쪽의 유일한 실측이다.
+  godot-template:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.7.2-stable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Godot 받기
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot" && cd "$RUNNER_TEMP/godot"
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip && chmod +x "Godot_v${GODOT_VERSION}_linux.x86_64"
+          echo "GODOT_BIN=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64" >> "$GITHUB_ENV"
+          "./Godot_v${GODOT_VERSION}_linux.x86_64" --version
+
+      - name: 임시 게임 저장소에 설치
+        run: |
+          mkdir -p "$RUNNER_TEMP/game" && cd "$RUNNER_TEMP/game"
+          git init -q && git -c user.email=ci@example.invalid -c user.name=ci commit -q --allow-empty -m init
+          node "$GITHUB_WORKSPACE/scripts/setup.mjs" . --godot
+          node tools/hfgs/godot-addons.mjs .
+          mkdir -p data/dialogue
+          echo '{"version":1,"mercenaries":[{"id":"ash","name":"애쉬","hire_cost":100,"stats":{"might":5,"wits":5,"grit":5}}]}' > data/mercenaries.json
+          echo '{"version":1,"contracts":[{"id":"grain-cart","title":"곡물 수레 호위","difficulty":3,"reward":120,"days":3,"check":"might","intro_dialogue":"contract-grain-cart"}]}' > data/contracts.json
+          echo '{"id":"contract-grain-cart","start":"n1","nodes":[{"id":"n1","speaker":"client","text":"곡물 수레를 호위해 주시오.","choices":[{"text":"맡겠다","next":"n2"}]},{"id":"n2","speaker":"ash","text":"보수는 선금으로."}]}' > data/dialogue/contract-grain-cart.json
+          node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --out-dir dialogue
+          ls dialogue
+
+      - name: 문법, gdUnit4, 헤드리스 부팅
+        working-directory: ${{ runner.temp }}/game
+        run: node tools/hfgs/godot-check.mjs all
+
+      - name: 스크린샷(xvfb + Movie Maker)
+        working-directory: ${{ runner.temp }}/game
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q xvfb libgl1 libglu1-mesa > /dev/null
+          node tools/hfgs/godot-check.mjs shot --out "$RUNNER_TEMP/shots"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: godot-shots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore

@@ -35,8 +35,11 @@ tools/                     게임 저장소의 tools/hfgs/로 복사되는 수�
   check-assets.mjs         PNG 크기·투명도·용량, WAV 길이·채널·샘플레이트·용량 검사
   dialogue-to-dtl.mjs      대사 JSON(엔진 중립 원본) → Dialogic 2 타임라인(.dtl) 변환, --check는 검사만
   screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷(--serve로 서버 띄우고 종료)
+  godot-addons.mjs         Godot 애드온을 고정 git 태그로 받아 addons/에 넣고 project.godot에 등록
+  godot-check.mjs          Godot 검사: syntax(--check-only), test(gdUnit4), run(헤드리스 부팅), shot(xvfb 스크린샷)
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
 templates/phaser/          웹 프로토타입 템플릿(Phaser 4 + Vite + TypeScript + Vitest). setup --phaser로 prototype/에 깐다
+templates/godot/           Godot 4.7 본편 템플릿(gdUnit4, Dialogic 2, Aseprite Wizard). setup --godot으로 저장소 루트에 깐다
 skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
 examples/                  첫 마일스톤(milestone-1.md)과 작업 파일 예시(tasks/)
 docs/design/               설계 문서
@@ -60,6 +63,12 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 
 ```bash
 node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소> --phaser
+```
+
+Godot 본편을 시작할 때는 `--godot`을 붙입니다. [Godot 4.7 템플릿](templates/godot/README.md)이 저장소 **루트**에 깔리고(`project.godot`가 루트여야 `data/`·`assets/`가 `res://` 안에 들어옵니다), `prototype/`·`tools/`에는 `.gdignore`가 생깁니다. 애드온은 `node tools/hfgs/godot-addons.mjs .`로 받고, Godot 실행 파일은 `GODOT_BIN`으로 가리킵니다.
+
+```bash
+node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소> --godot
 ```
 
 ## 작업 흐름
@@ -132,6 +141,19 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 
 web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<계약 제목>"}`와 `acceptance_commands: ["npm --prefix prototype test"]`로 검사합니다(예: `examples/tasks/contract-board-ui.json`).
 
+### Godot 본편(4.7)
+
+프로토타입에서 확인한 재미를 Godot으로 만듭니다. 데이터·대사 JSON·애셋은 프로토타입과 같은 파일이고, 규칙 공식(`scripts/rules/contract_rules.gd`)은 프로토타입의 `contract.ts`와 같은 숫자를 내야 합니다(두 테스트가 같은 경우를 봅니다). 대사는 `tools/hfgs/dialogue-to-dtl.mjs ... --out-dir dialogue`로 `.dtl`을 만들어 Dialogic 2가 읽습니다. 자세한 것은 [templates/godot/README.md](templates/godot/README.md).
+
+| 검사 | 명령 | 하는 일 |
+|---|---|---|
+| 문법 | `godot-check.mjs syntax` | `--import`로 클래스 캐시를 만든 뒤 `scripts/`·`test/`의 `.gd`를 `--check-only`로 파싱 |
+| 테스트 | `godot-check.mjs test` | gdUnit4 CLI(헤드리스). 종료 코드 0 성공, 100 실패, 101 경고 |
+| 부팅 | `godot-check.mjs run` | 헤드리스로 시작 장면을 띄워 스크립트 오류와 `HFGS_READY` 로그 확인 |
+| 화면 | `godot-check.mjs shot` | 창을 띄워(리눅스는 xvfb-run) Movie Maker로 프레임 PNG. 사람이 봄 |
+
+godot-code·godot-scene 작업은 `godot-check.mjs all`(문법+테스트+부팅)이 자동 수용 검사입니다(예: `examples/tasks/contract-rules-godot.json`). Dialogic 2는 아직 alpha(2.0-alpha-20)라 버전을 고정했습니다.
+
 ## 검사를 믿을 수 있게 하는 규칙
 
 - **red-first.** `start`는 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 넘어갑니다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절합니다. 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하기 때문입니다. 새 파일을 만드는 작업은 파일이 없어 자연히 실패합니다. 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다. 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적습니다.
@@ -155,7 +177,7 @@ web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype ru
 npm test
 ```
 
-`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 24에서 돌고, 별도 잡이 Phaser 템플릿을 임시 저장소에 깔아 `npm install`·Vitest·tsc·빌드·Playwright 스크린샷 검사까지 돌립니다. Phaser·Vite 새 버전에서 템플릿이 깨지면 거기서 드러납니다.
+`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. Godot 검사 도구는 가짜 Godot 실행 파일로 명령 구성과 종료 코드 처리를 테스트합니다. CI는 Node 24에서 돌고, 별도 잡 둘이 템플릿을 실제로 검증합니다: `phaser-template`(npm install·Vitest·tsc·빌드·Playwright 스크린샷)과 `godot-template`(Godot 4.7.2 다운로드·애드온 설치·문법·gdUnit4·헤드리스 부팅·xvfb 스크린샷). Phaser·Vite·Godot 새 버전에서 템플릿이 깨지면 거기서 드러납니다.
 
 ## 라이선스
 

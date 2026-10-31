@@ -1,0 +1,24 @@
+{
+  "task_id": "M2-T1-contract-rules-godot",
+  "kind": "godot-code",
+  "objective": "Port the contract success chance to Godot: implement ContractRules.success_chance in scripts/rules/contract_rules.gd so that the gdUnit4 suite in test/rules/contract_rules_test.gd passes with the same numbers as the web prototype.",
+  "scope": {
+    "paths": [
+      "scripts/rules/contract_rules.gd"
+    ]
+  },
+  "context_sections": {
+    "design/gdd.md": [
+      "수치와 공식"
+    ]
+  },
+  "success_criteria": [
+    "AC1: node tools/hfgs/godot-check.mjs all passes (syntax, gdUnit4 tests in test/, headless boot)",
+    "AC2: scripts/rules/contract_rules.gd gives the same chance as prototype/src/rules/contract.ts for the cases in both test suites"
+  ],
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ]
+  }
+}
