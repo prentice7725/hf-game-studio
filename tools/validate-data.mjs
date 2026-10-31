@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// 게임 데이터 JSON을 스키마로 검사한다. hyperfusion의 acceptance_commands에 넣어 컨트롤러가 직접 돌리는 용도다.
+// 게임 데이터 JSON을 스키마로 검사한다. task.mjs의 수용 검사로 돈다.
 // 사용법: node tools/hfgs/validate-data.mjs <스키마.json> <데이터.json> [데이터.json ...] [--expect <경로>=<JSON 값> ...]
 // --expect: 경로가 가리키는 값이 모두 그 값과 같아야 한다(하나도 없으면 실패). 데이터가 여러 개면 각 파일에 적용한다.
 //   예) --expect '/mercenaries/[id=ash]/hire_cost=120'
 //   이미 있는 파일을 고치는 작업은 스키마 검사가 처음부터 통과하므로, 바뀔 값을 이것으로 확인해야
-//   hyperfusion의 red-first(시작 전 실패 확인)를 통과한다.
+//   task.mjs start의 red-first(시작 전 실패 확인)를 통과한다.
 // 의존성 없이 돌도록 JSON Schema의 일부만 구현한다:
 //   type, enum, const, required, properties, additionalProperties(불리언), items, minItems, maxItems,
 //   minimum, maximum, minLength, maxLength, pattern, $ref(#/$defs/...)

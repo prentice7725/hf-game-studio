@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-// 화면을 실제로 띄워 보고 스크린샷을 남긴다. UI 작업에서 일꾼의 "됐다"는 말 대신 컨트롤러가 확인하는 수용 검사다.
+// 화면을 실제로 띄워 보고 스크린샷을 남긴다. UI 작업의 수용 검사다.
 // 사용법:
 //   node tools/hfgs/screenshot.mjs --serve "npm run dev" --url http://localhost:5173 --selector "#contract-board" [--expect-text "계약"]
 //   node tools/hfgs/screenshot.mjs --file dist/index.html --selector canvas
 //   node tools/hfgs/screenshot.mjs --electron . --selector "#app"
 // --serve: 개발 서버를 이 도구가 직접 띄우고, --url이 응답할 때까지 기다렸다가 찍은 뒤 프로세스 트리째 종료한다.
-//   hyperfusion은 일꾼 프로세스가 모두 끝난 뒤에 수용 검사를 돌리므로, 일꾼이 띄운 서버에 기대면 안 된다.
-//   이 도구가 끝날 때 자식 프로세스가 남으면 hyperfusion의 종료 확인에도 걸린다.
+//   검사는 아무 때나 돌 수 있어야 하므로 떠 있는 서버에 기대지 않는다. 끝날 때 자식 프로세스를 남기지 않는다.
 // 실패 조건: 서버가 뜨지 않음, 페이지 오류(uncaught exception), 콘솔 error, 선택자 없음, 기대 문구 없음.
-// 스크린샷은 저장소 밖(임시 폴더, HFGS_SCREENSHOT_DIR로 변경)에 저장한다. 저장소 안에 쓰면 컨트롤러가 트리 변경으로 본다.
+// 스크린샷은 저장소 밖(임시 폴더, HFGS_SCREENSHOT_DIR로 변경)에 저장한다. 저장소 안에 쓰면 verify가 범위 밖 변경으로 본다.
 // Playwright가 대상 저장소나 전역에 설치되어 있어야 한다.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -63,7 +62,7 @@ export async function waitForUrl(url,child,timeout){
 
 const groupAlive=pid=>{try{process.kill(-pid,0);return true;}catch(e){return e.code==='EPERM';}};
 
-// 서버를 자식·손자 프로세스까지 종료한다. 남은 프로세스가 있으면 hyperfusion이 종료 확인에서 막는다.
+// 서버를 자식·손자 프로세스까지 종료한다. 남은 프로세스가 있으면 다음 검사나 리뷰에 섞인다.
 export async function stopServer(child){
  if(!child?.pid)return;
  try{await killTree(child);}

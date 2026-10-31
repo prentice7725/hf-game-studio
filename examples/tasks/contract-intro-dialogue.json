@@ -1,6 +1,6 @@
 {
   "task_id": "M1-T2-contract-intro",
-  "game_kind": "narrative",
+  "kind": "narrative",
   "objective": "Write the intro dialogue for the first contract (the client hires Ash to escort a grain cart) as data/dialogue/contract-grain-cart.json.",
   "scope": {
     "paths": [

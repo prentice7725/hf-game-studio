@@ -21,8 +21,10 @@ import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {ADAPTERS} from './lib/adapters/index.mjs';
+import {runChecks} from './lib/checks.mjs';
+export {runChecks};
 import {invoke as invokeCli,readOnlyOrders} from './lib/cli.mjs';
-import {loadKinds,docDirectives} from './brief.mjs';
+import {loadKinds,docDirectives} from './task.mjs';
 
 function fail(m){throw Object.assign(Error(m),{usage:true});}
 const str=v=>typeof v==='string'&&v.trim().length>0;
@@ -56,15 +58,6 @@ function gitOut(repo,args){
  const r=spawnSync('git',['-C',repo,...args],{encoding:'utf8',maxBuffer:256*1024*1024,windowsHide:true});
  if(r.status!==0)fail(`git ${args.join(' ')} 실패: ${String(r.stderr).trim()}`);
  return r.stdout;
-}
-
-// 검사는 이 스크립트가 직접 돌린다. 리뷰어는 작성자의 "테스트 통과" 주장 대신 이 결과를 본다.
-export function runChecks(repo,commands,{spawn=spawnSync,timeoutMs=10*60*1000}={}){
- return commands.map(command=>{
-  const r=spawn(command,{cwd:repo,shell:true,encoding:'utf8',timeout:timeoutMs,maxBuffer:64*1024*1024,windowsHide:true});
-  const out=`${r.stdout??''}${r.stderr?'\n'+r.stderr:''}`.trim();
-  return {command,exit_code:r.error?.code==='ETIMEDOUT'?'timeout':r.status,output_tail:out.slice(-2000)};
- });
 }
 
 const finding={type:'object',properties:{file:{type:'string'},line:{type:'integer',minimum:0},severity:{type:'string',enum:['blocker','major','minor','nit']},issue:{type:'string'},suggestion:{type:'string'}},required:['file','line','severity','issue','suggestion'],additionalProperties:false};

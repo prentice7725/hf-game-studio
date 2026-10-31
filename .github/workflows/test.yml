@@ -1,5 +1,4 @@
-# 테스트 워크플로. 설치된 hyperfusion 대신 최신 hyperfusion을 받아 HF_SKILL로 넘겨,
-# 컴파일한 brief와 프리셋이 실제 hyperfusion 검증(contracts.mjs, executor-config.mjs)을 통과하는지까지 본다.
+# 테스트 워크플로. 외부 저장소 의존이 없어 체크아웃 하나로 돈다. Node 24만 지원한다(package.json engines).
 name: test
 
 on:
@@ -16,18 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # hyperfusion은 공개 저장소라 토큰 없이 받는다.
-      - uses: actions/checkout@v4
-        with:
-          repository: prentice7725/hyperfusion
-          path: .hyperfusion
-
-      # hyperfusion이 Node.js 24 이상을 요구한다.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - name: 테스트(hyperfusion 검증 포함)
+      # start·verify 테스트가 실제 git 저장소를 만들어 커밋한다.
+      - name: 테스트
         run: npm test
-        env:
-          HF_SKILL: ${{ github.workspace }}/.hyperfusion

@@ -1,13 +1,24 @@
 {
   "task_id": "M1-T3b-merc-portrait-pipeline",
-  "game_kind": "image-asset",
+  "kind": "art-image",
   "objective": "Generate Ash's portrait with the asset-pipeline MCP server following design/art-bible.md and save it at assets/portraits/merc-ash.png.",
-  "scope": {"paths": ["assets/portraits/merc-ash.png"]},
+  "scope": {
+    "paths": [
+      "assets/portraits/merc-ash.png"
+    ]
+  },
   "assets_manifest": "design/asset-manifest.json",
-  "asset_pipeline": {"project_id": "merc-guild", "output_class": "NONPIXEL_IMAGE"},
+  "asset_pipeline": {
+    "project_id": "merc-guild",
+    "output_class": "NONPIXEL_IMAGE"
+  },
   "success_criteria": [
     "AC1: assets/portraits/merc-ash.png is a 256x256 PNG with a transparent background under 512 KB",
     "AC2: the portrait matches the silhouette and palette of design/refs/merc.png"
   ],
-  "acceptance_map": {"AC1": ["@auto"]}
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ]
+  }
 }

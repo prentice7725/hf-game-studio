@@ -1,202 +1,140 @@
 # hf-game-studio
 
-**멀티 모델 게임 개발 스튜디오입니다.** Claude가 리드이고, 분야마다 잘하는 모델을 전문가로 부릅니다. 시나리오·대사·로어는 Gemini Argon, 이미지·효과음은 asset-pipeline(ComfyUI, Codex, Grok), 코드 리뷰는 작성자와 다른 계열 모델이 맡습니다.
+**멀티 모델 게임 개발 스튜디오입니다.** Claude가 리드이자 주 구현자이고, 분야마다 잘하는 모델을 읽기 전용 전문가로 부릅니다.
 
-> **v2로 전환 중입니다.** 이 저장소는 [hyperfusion](https://github.com/prentice7725/hyperfusion) 위에 게임 작업 종류를 얹는 얇은 층으로 시작했고, 아래 "hyperfusion 경로"(brief 컴파일 → hyperfusion 일꾼)는 아직 그대로 동작합니다. 2026-10-30에 **hyperfusion 의존을 끊고 Claude가 직접 구현하며 전문가 모델을 읽기 전용으로 부르는 구조**로 방향을 바꿨습니다. 결정 이유, 가져올 것과 버릴 것, 실행 순서는 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있습니다. v2 경로의 도구는 `scripts/consult.mjs`(전문가 호출)와 `tools/dialogue-to-dtl.mjs`(대사 변환)이고, hyperfusion 경로를 걷어 내는 작업(v2 9단계)은 아직 남아 있습니다.
-
-## hyperfusion 경로(과도기)
-
-두 프로젝트를 섞은 포크가 아니라 **레이어로 쌓은 구조**입니다.
-
-| 층 | 담당 | 출처 |
+| 일 | 누가 | 어떻게 |
 |---|---|---|
-| 실행 엔진 | 일꾼 배치, 반려·교체, 스냅샷 검증, 리뷰, 마일스톤 게이트 | hyperfusion (설치된 것을 그대로 사용, 이 저장소에는 없음) |
-| 게임 레이어 | 게임 작업 종류, 역할 지시문, 단일 원본 문서, 게임용 수용 검사, 리드 검토 스킬 | 이 저장소 (역할·스킬은 [Claude-Code-Game-Studios](https://github.com/Donchitos/Claude-Code-Game-Studios) 기반) |
+| 설계, 코드, 수치 데이터, 통합, 검수 | Claude | 직접 |
+| 시나리오, 대사, 로어 | Gemini Argon | `consult.mjs write`로 쓰고 Claude가 용어집·세계관에 맞는지 검수 |
+| 이미지, 효과음 | [asset-pipeline](https://github.com/prentice7725/asset-pipeline) (ComfyUI, Codex, Grok, Stable Audio) | Claude가 MCP로 호출, 사람이 보고 들어 승인 |
+| 코드 리뷰 | 작성자와 다른 계열 모델(기본 Codex) | `consult.mjs review`: 작성자의 주장 없이 diff와 검사 결과만 보고 판정 |
 
-hyperfusion이 업데이트되면 그대로 반영되고, 두 저장소가 서로 꼬이지 않습니다.
+Claude가 직접 구현하므로 일꾼 배치·라운드·리스 같은 위임 장치는 없습니다. 대신 **기계적 수용 검사**(스키마, 애셋 규격, 대사 변환, 스크린샷)와 그 검사를 믿을 수 있게 하는 두 규칙(red-first, 검사 기준 파일은 범위 밖)이 작업의 뼈대입니다. 결정 배경은 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있습니다.
+
+> 이 저장소는 [hyperfusion](https://github.com/prentice7725/hyperfusion) 위에 게임 작업 종류를 얹는 층으로 시작했습니다(v1). 2026-10-30에 의존을 끊고 좋은 부분(외부 CLI 어댑터, 교차 계열 리뷰, 수용 검사 무결성, 비밀값 마스킹)만 옮겨 왔습니다. 출처는 [NOTICE.md](NOTICE.md)에 있습니다.
 
 ## 구성
 
 ```text
-SKILL.md                   리드용 메인 스킬(/hf-game-studio)
-game-kinds.json            게임 작업 종류 → hyperfusion task_kind 매핑, 역할, 수용 검사
-presets/
-  hyperfusion.config.json  게임용 hyperfusion 설정 프리셋
-roles/*.md                 역할 지시문(일꾼 brief의 constraints로 들어감)
+SKILL.md                   리드(Claude)용 메인 스킬: 작업 절차와 규칙
+game-kinds.json            게임 작업 종류: 만드는 쪽, 역할, 자동 수용 검사, 규칙
+roles/*.md                 역할 규칙(리드가 따르고, 글 작업은 작가 brief의 style로 들어감)
 scripts/
-  brief.mjs                게임 brief → hyperfusion brief 컴파일러
-  consult.mjs              다른 계열 전문가 호출: review(결론 없이 diff·검사 결과로 리뷰), write(Argon 글쓰기), dispose, stats
-  setup.mjs                게임 저장소에 레이어 설치
+  task.mjs                 작업 컨트롤러: plan(검증·읽을 문서·규칙·검사), start(red-first·작업 전 기록),
+                           check(검사만), verify(검사·범위·기준 파일 불변 + 리뷰 명령)
+  consult.mjs              다른 계열 전문가 호출: review, write(Argon), dispose, stats
+  setup.mjs                게임 저장소에 설치
   lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
     cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
     adapters/              codex(리뷰, 기본 Sol), agy(글쓰기·리뷰, 기본 Gemini Argon high), grok(리뷰)
+    checks.mjs             수용 검사 명령 실행(task.mjs와 consult.mjs가 같이 씀)
     redaction.mjs          보내는 프롬프트의 비밀값·개인정보 가리기
     env.mjs, platform.mjs  CLI에 넘길 환경변수 제한, 실행 파일 찾기와 Windows 명령줄 길이
 tools/                     게임 저장소의 tools/hfgs/로 복사되는 수용 검사 도구
-  validate-data.mjs        JSON 데이터 스키마 검사(대사 그래프 참조 검사 포함)
+  validate-data.mjs        JSON 데이터 스키마 검사(--expect로 바뀔 값 확인)
   check-assets.mjs         PNG 크기·투명도·용량, WAV 길이·채널·샘플레이트·용량 검사
-  dialogue-to-dtl.mjs      대사 JSON(엔진 중립 원본) → Dialogic 2 타임라인(.dtl) 변환, 용어집 인물 ID 검사(--check는 검사만)
-  screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷
+  dialogue-to-dtl.mjs      대사 JSON(엔진 중립 원본) → Dialogic 2 타임라인(.dtl) 변환, --check는 검사만
+  screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷(--serve로 서버 띄우고 종료)
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
 skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
-examples/                  첫 마일스톤 PLAN.json과 게임 brief 예시
+examples/                  첫 마일스톤(milestone-1.md)과 작업 파일 예시(tasks/)
+docs/design/               설계 문서
 ```
-
-## 왜 task_kind를 늘리지 않고 매핑하나
-
-hyperfusion의 `task_kind`는 `code, ui, image-asset, tests, refactor, docs` 6종이 코드(`executor-config.mjs`, `contracts.mjs`)에 고정되어 있어, `gdd`나 `narrative` 같은 새 종류를 설정에 넣으면 검증에서 거절됩니다. 그래서 hyperfusion은 고치지 않고, 게임 작업 종류를 `game-kinds.json`에서 6종 중 하나로 내려 보냅니다.
-
-| game_kind | task_kind | 역할 | 자동 수용 검사 | 1순위 일꾼(프리셋) |
-|---|---|---|---|---|
-| gdd | docs | game-designer | - | Antigravity (Gemini Argon) |
-| narrative | docs | writer | `dialogue-to-dtl.mjs --check`(필수: 스키마·그래프 규칙·용어집 인물·Dialogic 변환) | Antigravity (Gemini Argon) |
-| lore | docs | world-builder | - | Antigravity (Gemini Argon) |
-| balance-data | code / medium | systems-designer | 스키마(필수) | Sonnet |
-| economy-data | code / medium | economy-designer | 스키마(필수) | Sonnet |
-| level | code | level-designer | 스키마(`schema` 있을 때) | 난이도별 |
-| image-asset | image-asset | technical-artist | 매니페스트 규격(필수) | Grok |
-| sfx | image-asset | sound-designer | 매니페스트 규격(필수), asset_pipeline 필수 | Luna |
-| ui | ui | ui-programmer | 스크린샷(`screenshot` 있을 때) | Antigravity (Gemini Argon) |
-| gameplay-code, tests, refactor | 같은 이름 | gameplay-programmer | - | 난이도별 |
-
-한계: 실적(라우팅 학습)은 task_kind 단위로 쌓입니다. gdd·narrative·lore는 모두 docs 실적으로 합쳐집니다.
 
 ## 설치
 
-필요한 것: hyperfusion 설치(Node.js 24+, 첫 커밋이 있는 Git 저장소, 일꾼 CLI 하나 이상).
-
-```bash
-git clone https://github.com/prentice7725/hyperfusion.git ~/.claude/skills/hyperfusion
-```
+필요한 것: Node.js 24 이상, 첫 커밋이 있는 Git 저장소. 전문가는 쓸 것만: `codex`(리뷰), `agy`(Argon 글쓰기), asset-pipeline MCP(이미지·효과음), Playwright(스크린샷 검사를 쓰는 저장소에 `npm i -D playwright`).
 
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
 ```
 
-게임 저장소에 레이어를 깝니다. 이미 있는 파일은 덮어쓰지 않습니다.
-
 ```bash
 node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 ```
 
-일꾼 CLI가 실제로 도는지 확인합니다.
+게임 저장소에 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)이 깔립니다. 이미 있는 파일은 덮어쓰지 않습니다. 검사 도구와 스킬만 새 버전으로 바꾸려면 `--force`를 붙입니다. 설계 문서는 `--force`에도 덮어쓰지 않습니다.
 
-```bash
-node ~/.claude/skills/hyperfusion/scripts/setup-doctor.mjs <게임 저장소> --smoke
-```
+## 작업 흐름
 
-검사 도구나 스킬만 새 버전으로 바꾸려면 `--force`를 붙입니다. 설정(`hyperfusion.config.json`)과 설계 문서(`design/`)는 `--force`에도 덮어쓰지 않습니다.
-
-## 사용 흐름
-
-1. **단일 원본 문서 채우기.** `design/glossary.md`, `world.md`, `gdd.md`, `art-bible.md`를 먼저 채웁니다. 모든 모델이 이 문서를 읽습니다. 비어 있으면 모델마다 세계관과 수치를 따로 지어냅니다.
-2. **결과물 형식 정하기.** 데이터는 `design/schemas/*.schema.json`, 이미지는 `design/asset-manifest.json`에 형식을 먼저 적습니다. 이 파일들이 컨트롤러의 수용 검사 기준이 됩니다.
-3. **프로젝트 계획.** `examples/PLAN.json`처럼 작게(용병 1명 + 계약 1개 + 화면 1개) 한 마일스톤을 hyperfusion `project.mjs propose`로 올리고 승인합니다.
-4. **작업마다 게임 brief 작성 → 컴파일 → hyperfusion 실행.**
-
-```bash
-BRIEF=$(HF_SKILL=~/.claude/skills/hyperfusion node ~/.claude/skills/hf-game-studio/scripts/brief.mjs merc-data.json --repo .)
+```text
+작업 파일 작성 → task.mjs start (red-first, 작업 전 기록)
+  → 구현: Claude 직접 | consult.mjs write (Argon) | asset-pipeline MCP (Claude가 호출)
+  → task.mjs verify (검사 통과 + 범위 안 + 기준 파일 불변)
+  → consult.mjs review (다른 계열) → dispose → 고칠 것이 있으면 다시 verify
+  → 그림·소리는 사람이 승인
 ```
 
 ```bash
-node ~/.claude/skills/hyperfusion/scripts/fusion-state.mjs init . "$BRIEF"
+node ~/.claude/skills/hf-game-studio/scripts/task.mjs start tasks/merc-data.json --repo .
 ```
 
-컴파일된 brief는 기본으로 **저장소 밖** 임시 폴더(`<tmp>/hfgs-briefs/<task_id>.json`, `HFGS_BRIEF_DIR`로 변경)에 쓰고 그 경로만 출력합니다. 저장소 안에 쓰면 추적되지 않는 파일이 hyperfusion의 변경 목록에 섞이기 때문입니다. `--out`으로 위치를 정할 수 있고(저장소 안이면 경고), `--stdout`이면 JSON을 그대로 출력합니다.
+```bash
+node ~/.claude/skills/hf-game-studio/scripts/task.mjs verify tasks/merc-data.json --repo .
+```
 
-`HF_SKILL`을 주면 컴파일 결과가 설치된 hyperfusion의 brief 검증까지 통과하는지 확인합니다.
+verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
 
-### 게임 brief
-
-hyperfusion brief 필드에 게임 필드를 더한 형식입니다.
+### 작업 파일
 
 ```json
 {
   "task_id": "M1-T1-merc-data",
-  "game_kind": "balance-data",
+  "kind": "balance-data",
   "objective": "Create the first mercenary, Ash, in data/mercenaries.json ...",
   "scope": {"paths": ["data/mercenaries.json"]},
   "schema": "design/schemas/mercenaries.schema.json",
-  "success_criteria": ["AC1: data/mercenaries.json validates against the schema ..."],
+  "context_sections": {"design/gdd.md": ["규칙", "수치와 공식"]},
+  "success_criteria": ["AC1: data/mercenaries.json validates against the schema ...", "AC2: ..."],
   "acceptance_map": {"AC1": ["@auto"]}
 }
 ```
 
 | 필드 | 뜻 |
 |---|---|
-| `game_kind` | 위 표의 게임 작업 종류 |
-| `role` | 역할 덮어쓰기. `null`이면 역할 지시문을 넣지 않음 |
-| `context_docs` | 일꾼이 먼저 읽을 단일 원본 문서. 기본은 `design/` 네 문서 중 있는 것 |
-| `context_sections` | 문서별로 읽을 섹션 제목. `{"design/gdd.md": ["규칙", "수치와 공식"]}`. 아래 "설계 문서 읽기" 참고 |
-| `schema`, `data_files` | 데이터 스키마 검사. `data_files`를 생략하면 `scope.paths`의 `.json`. narrative에서는 스키마 검사 대신 `dialogue-to-dtl.mjs --check`가 돌아간다 |
-| `glossary` | narrative 전용. 대사 검사의 용어집 경로(기본 `design/glossary.md`). 검사 기준이라 `scope.paths`에 둘 수 없다 |
-| `expect` | 바뀌어야 할 값. `{"/mercenaries/[id=ash]/hire_cost": 120}`처럼 경로와 JSON 값. `[키=값]`은 그 필드가 같은 원소를 고름 |
-| `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 `.png` |
-| `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `serve`, `expect_text`, `name`(선택). 로컬 서버 주소면 `serve`(서버 실행 명령) 필수 |
-| `acceptance_map`의 `"@auto"` | 자동으로 만든 수용 명령 전부 |
+| `kind` | 아래 표의 작업 종류 |
+| `task_id`, `objective`, `scope.paths`, `success_criteria` | 필수. 수용 기준은 `AC1: ...`처럼 ID로 시작 |
+| `acceptance_commands`, `acceptance_map` | 직접 적는 검사 명령과 기준↔명령 연결. `"@auto"`는 자동으로 만든 검사 전부 |
+| `allow_out_of_scope` | 범위 밖이지만 바뀌어도 되는 파일 |
+| `baseline_green` | 처음부터 검사가 통과하는 게 맞는 이유(리팩터 등). 적으면 red-first를 건너뜀 |
+| `role` | 역할 덮어쓰기. `null`이면 역할 규칙을 넣지 않음 |
+| `context_docs`, `context_sections` | 읽을 단일 원본 문서와 섹션. 기본은 `design/` 네 문서 중 있는 것 |
+| `schema`, `data_files`, `expect` | 데이터 스키마 검사. `expect`는 바뀌어야 할 값 `{"/mercenaries/[id=ash]/hire_cost": 120}` |
+| `glossary` | narrative 전용. 대사 검사의 용어집(기본 `design/glossary.md`) |
+| `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 PNG·WAV |
+| `asset_pipeline` | `project_id`, `output_class`, `duration_seconds`(SFX), `workflow_id`·`reference_image`(art-edit) |
+| `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `serve`, `expect_text`, `name`. 로컬 서버 주소면 `serve` 필수 |
 
-컴파일러가 하는 일:
+### 작업 종류
 
-- `game_kind`를 hyperfusion `task_kind`(와 기본 난이도)로 바꿉니다.
-- 종류별 제약, 역할 지시문, 단일 원본 문서 안내를 `constraints`에 넣습니다. 일꾼 간 통신 언어가 영어라 지시문은 영어입니다.
-- `schema`(+ `expect`), `assets_manifest`, `screenshot`으로 `acceptance_commands`를 만듭니다.
-- 이미 있는 파일을 형식 검사만으로 고치는 작업이면 경고합니다(아래 red-first).
-- 검사 기준 파일(`schema`, `assets_manifest`, `glossary`)이 `scope.paths`에 있으면 거절합니다. 일꾼이 기준을 느슨하게 고쳐 통과하는 것을 막기 위해서입니다.
+| kind | 만드는 쪽 | 자동 수용 검사 | 필수 입력 |
+|---|---|---|---|
+| gdd, lore | Claude 구조 + Argon 문장 | 없음 | |
+| narrative | Argon 쓰고 Claude 검수 | `dialogue-to-dtl.mjs --check`(스키마·그래프 규칙·용어집 인물·Dialogic 변환) | `schema` |
+| balance-data, economy-data | Claude | 스키마(+`expect`) | `schema` |
+| level | Claude | 스키마(`schema` 있을 때) | |
+| art-image | asset-pipeline | PNG 매니페스트 | `assets_manifest`, `asset_pipeline` |
+| art-edit | asset-pipeline(Codex·Grok CLI provider) | PNG 매니페스트 | 위 + `reference_image`, `workflow_id` |
+| sfx | asset-pipeline | WAV 매니페스트 | `assets_manifest`, `asset_pipeline` |
+| web-prototype | Claude (Phaser 4) | 스크린샷(`screenshot` 있을 때) | |
+| code | Claude | `acceptance_commands`의 테스트 | |
 
-### 설계 문서 읽기: 섹션 단위로
+## 검사를 믿을 수 있게 하는 규칙
 
-모든 일꾼이 매 작업마다 설계 문서를 통째로 읽으면 문서가 커질수록 토큰이 빠르게 늘어납니다. 원본 템플릿에서는 GDD 하나가 1.7MB(약 45만 토큰)까지 커져 주간 한도를 3일 만에 다 쓴 사례가 있습니다([#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). Claude Code의 Read는 한 번에 약 2.5만 토큰까지라, 큰 문서는 읽기가 실패해 나눠 다시 읽느라 비용이 두 배쯤 듭니다([#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64)). 여러 일꾼이 돌고 반려 때마다 다시 읽는 hyperfusion에서는 이 비용이 더 커집니다.
-
-그래서 컴파일러는 문서마다 읽는 방식을 정해 일꾼에게 지시합니다.
-
-| 문서 | 일꾼 지시 |
-|---|---|
-| `context_sections`에 섹션을 적은 문서 | 그 섹션의 줄 범위만 읽음(컴파일 시점의 범위를 brief에 적어 줌) |
-| 섹션을 안 적은 40KB 이하 문서 | 통째로 읽음 |
-| 섹션을 안 적은 40KB 초과 문서 | 제목만 `grep`으로 보고 필요한 섹션만 읽음. 통째 읽기 금지(컴파일 시 경고) |
-
-```json
-"context_sections": {"design/gdd.md": ["규칙", "수치와 공식"]}
-```
-
-섹션은 다음에 오는 같은 단계 이상의 제목 직전까지이고, 하위 섹션을 포함합니다. 없는 섹션 이름을 적으면 있는 제목 목록과 함께 거절합니다. 리드용 `gs-*` 검토 스킬도 같은 방식으로 섹션만 읽습니다.
-
-### red-first: 이미 있는 파일을 고치는 작업
-
-hyperfusion은 일꾼이 손대기 전에 수용 검사를 한 번 돌려 **실패하는지** 확인하고, 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 작업을 시작하지 않습니다. 맞는 결과와 엉터리 결과를 가르지 못하는 검사이기 때문입니다.
-
-- 새 파일을 만드는 작업은 파일이 없어 검사가 실패하므로 그대로 됩니다.
-- 이미 있는 데이터를 고치는 작업은 스키마 검사가 처음부터 통과합니다. `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다.
-
-```json
-"expect": {"/mercenaries/[id=ash]/hire_cost": 120}
-```
-
-- 이미 있는 이미지를 다시 만드는 작업은 매니페스트 검사가 처음부터 통과합니다. 크기를 바꾸는 경우가 아니면 다른 검사를 `acceptance_commands`에 넣거나, hyperfusion의 `acceptance_baseline_green`에 이유를 적습니다.
-
-### UI 스크린샷과 개발 서버
-
-hyperfusion은 일꾼 프로세스가 **모두 끝난 뒤에** 수용 검사를 돌립니다. 일꾼이 띄운 개발 서버는 그때 이미 꺼져 있습니다(남아 있으면 종료 확인에서 막힙니다). 그래서 서버 주소를 찍을 때는 `serve`에 서버 실행 명령을 적어 검사 도구가 직접 띄우게 합니다.
-
-```json
-"screenshot": {"serve": "npm run dev", "url": "http://localhost:5173", "selector": "#contract-board", "expect_text": "곡물 수레 호위"}
-```
-
-검사 도구는 서버를 띄우고, 주소가 응답할 때까지 기다렸다가(기본 60초) 찍은 뒤 서버를 자식·손자 프로세스까지 종료합니다. 빌드 결과물을 바로 열 수 있으면 `"file": "dist/index.html"`이 더 단순합니다.
-
-## 게이트와 프로세스
-
-게이트는 hyperfusion 것 하나만 씁니다. 원본 게임 스튜디오 템플릿의 디렉터 게이트, GDD 섹션 강제, 질문 우선 협업 절차는 가져오지 않았습니다. 프로세스를 무겁게 할수록 결과가 나빠졌다는 원본 작성자의 실측이 있고, 모델을 여러 개 섞으면 그 오버헤드가 더 커지기 때문입니다.
+- **red-first.** `start`는 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 넘어갑니다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절합니다. 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하기 때문입니다. 새 파일을 만드는 작업은 파일이 없어 자연히 실패합니다. 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다. 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적습니다.
+- **검사 기준은 범위 밖.** 스키마, 애셋 매니페스트, 대사 검사의 용어집, 참조 이미지는 `scope.paths`에 둘 수 없고(plan이 거절), `start` 때 해시를 기록해 `verify`에서 바뀌었으면 실패합니다. 기준을 느슨하게 고쳐 통과시키는 길을 막습니다.
+- **범위 검사.** `verify`는 작업 전과 비교해 바뀐 파일이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있어야 통과합니다. 작업 전부터 바뀌어 있던 파일은 내용이 더 바뀌었을 때만 이 작업의 변경으로 봅니다.
+- **섹션 단위 읽기.** 설계 문서가 커질수록 통째로 읽는 비용이 빠르게 늘고, Read 한도(약 2.5만 토큰)를 넘으면 실패합니다(원본 템플릿 [#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64), [#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). `context_sections`에 섹션을 적으면 plan이 줄 범위를 찾아 그 범위만 읽게 하고, 40KB가 넘는 문서는 섹션을 안 적어도 통째로 읽지 않게 합니다. 작가 brief에도 같은 지시가 들어갑니다.
+- **리뷰어는 결론을 받지 않습니다.** `consult.mjs review`는 작성자의 요약·테스트 주장을 리뷰어에게 주지 않고, diff·바뀐 파일·스크립트가 직접 돌린 검사 결과만 줍니다. 호출 전후 작업 트리를 비교해 전문가가 파일을 바꿨으면 답을 버립니다.
 
 ## 주의
 
-- **Grok 이미지 생성은 검증되지 않았습니다.** hyperfusion 테스트의 CLI는 가짜라 실제 이미지 생성과 저장은 확인되지 않았습니다. 애셋 작업 전에 Grok으로 이미지 한 장을 실제 저장까지 해 보세요.
-- **asset-pipeline 연동.** [asset-pipeline](https://github.com/prentice7725/asset-pipeline)의 MCP 서버를 Codex(`~/.codex/config.toml`의 `[mcp_servers.asset_pipeline]`)에 등록해 두면, image-asset·sfx brief에 `"asset_pipeline": {"project_id": "<게임 id>", "output_class": "<종류>"}`를 넣어 Luna가 그 서버로 생성하게 할 수 있습니다. `output_class`는 image-asset이면 `NONPIXEL_IMAGE`·`PIXEL_STATIC`, sfx면 `SFX`이고, SFX는 `duration_seconds`로 길이를 줄 수 있습니다(예: `examples/briefs/merc-portrait-pipeline.json`, `examples/briefs/sword-swing-sfx.json`). 참조 이미지 편집은 ComfyUI 워크플로가 모두 text-to-image라 Codex·Grok CLI provider로만 되므로 `workflow_id`(`codex_imagegen`/`grok_imagine`)와 `reference_image`를 함께 적습니다(예: `examples/briefs/merc-portrait-variant.json`). 컴파일러가 생성 절차·재시도 금지·끝날 때까지 기다리기(`STARTING`·`RUNNING`)·run_id 보고를 제약으로 넣고, `init ... --executor luna`로 배치하라고 경고합니다. Claude 일꾼은 hyperfusion이 MCP를 막고, Grok·Antigravity에는 이 서버가 없습니다. 결과는 asset-pipeline에서도 REVIEW_REQUIRED 후보이므로 사람 승인 규칙은 그대로입니다. `PIXEL_STATIC`은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉬워 컴파일 때 경고합니다.
-- **이미지는 사람 승인까지 필요합니다.** `check-assets.mjs`는 크기·투명도·용량만 봅니다. 화풍과 캐릭터 일관성은 리뷰와 사람 승인으로 확인하고, 승인 전에는 아틀라스에 넣지 않습니다.
-- **Antigravity 모델 고정.** 프리셋은 `executors.antigravity.model`을 `gemini-4-argon`(+ `reasoning_effort: high` → `gemini-4-argon-high`)으로 둡니다. 설치된 `agy`가 `--model`을 지원하지 않거나 `agy models`에 그 모델이 없으면 hyperfusion이 Antigravity를 미설치로 보고 건너뜁니다. setup-doctor로 확인하세요.
-- **오디오는 효과음만 생성합니다.** 효과음(sfx)은 asset-pipeline을 쓰는 Luna만 만들 수 있어 asset_pipeline이 필수입니다. hyperfusion에는 오디오 종류가 없어 image-asset으로 내립니다. 음악·음성 생성 일꾼은 없으므로 사양서(gdd)로만 다룹니다. 효과음도 귀로 듣는 사람 승인이 필요합니다.
+- **asset-pipeline은 실제 모델로 검증되지 않았습니다.** 이미지·효과음이 실제로 저장까지 되는지 첫 작업 전에 `asset_capabilities`로 준비 상태를 보고 한 건 돌려 보세요. `PIXEL_STATIC`은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉽습니다(plan이 경고).
+- **그림과 소리는 사람 승인까지.** `check-assets.mjs`는 크기·투명도·용량·길이·채널만 봅니다. 화풍·캐릭터 일관성과 소리 품질은 사람이 보고 들어 승인합니다. 승인 전 애셋은 아틀라스나 장면에 넣지 않습니다.
+- **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 서버 종료는 Linux·macOS에서 프로세스 그룹 단위로 테스트했고, Windows(`taskkill /T`)는 테스트하지 않았습니다.
+- **agy 모델.** 기본 작가는 `gemini-4-argon`(high)입니다. `agy models` 목록에 없는 모델은 실행 전에 막습니다(agy는 모르는 모델을 받으면 조용히 기본 모델로 돕니다).
 - **스팀 출시.** AI 생성 콘텐츠 공개 의무와 각 생성 서비스의 상업적 이용 조건을 확인하세요(`design/art-bible.md`에 기록란이 있습니다).
-- **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 저장소 안에 쓰면 hyperfusion이 트리 변경으로 봅니다. 서버 종료는 Linux·macOS에서 프로세스 그룹 단위로 테스트했고, Windows(`taskkill /T`)는 테스트하지 않았습니다.
+- **v1에서 설치한 `hyperfusion.config.json`**이 게임 저장소에 남아 있으면 setup이 알려 줍니다. hyperfusion을 따로 쓰지 않으면 지워도 됩니다.
 
 ## 테스트
 
@@ -204,14 +142,8 @@ hyperfusion은 일꾼 프로세스가 **모두 끝난 뒤에** 수용 검사를 
 npm test
 ```
 
-hyperfusion이 설치되어 있으면 실제 hyperfusion 검증(brief 계약, 설정)까지 같이 돌립니다.
-
-```bash
-HF_SKILL=~/.claude/skills/hyperfusion npm test
-```
-
-CI(`.github/workflows/test.yml`)는 main 푸시와 PR마다 최신 hyperfusion을 받아 위 명령과 같은 방식으로 돌립니다. hyperfusion이 바뀌어 이 레이어가 깨지면 여기서 드러납니다.
+`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 24에서 돕니다.
 
 ## 라이선스
 
-MIT. 역할 지시문과 검토 스킬의 출처는 [NOTICE.md](NOTICE.md)에 있습니다.
+MIT. 역할 규칙·검토 스킬(Claude-Code-Game-Studios)과 CLI 어댑터·마스킹·수용 검사 무결성(hyperfusion)의 출처는 [NOTICE.md](NOTICE.md)에 있습니다.
