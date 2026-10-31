@@ -1,0 +1,22 @@
+{
+  "name": "game-prototype",
+  "private": true,
+  "type": "module",
+  "description": "버리는 웹 프로토타입(Phaser 4). 재미를 확인하고 데이터·대사·설계 수정만 남긴다.",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "shot": "node ../tools/hfgs/screenshot.mjs --serve \"npm run dev\" --url http://localhost:5173 --selector \"#hud\" --expect-text ready --name prototype"
+  },
+  "dependencies": {
+    "phaser": "4.2.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

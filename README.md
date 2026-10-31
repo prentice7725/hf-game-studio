@@ -36,6 +36,7 @@ tools/                     게임 저장소의 tools/hfgs/로 복사되는 수�
   dialogue-to-dtl.mjs      대사 JSON(엔진 중립 원본) → Dialogic 2 타임라인(.dtl) 변환, --check는 검사만
   screenshot.mjs           화면을 띄워 선택자·문구·콘솔 오류 확인 + 스크린샷(--serve로 서버 띄우고 종료)
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
+templates/phaser/          웹 프로토타입 템플릿(Phaser 4 + Vite + TypeScript + Vitest). setup --phaser로 prototype/에 깐다
 skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
 examples/                  첫 마일스톤(milestone-1.md)과 작업 파일 예시(tasks/)
 docs/design/               설계 문서
@@ -54,6 +55,12 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 ```
 
 게임 저장소에 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)이 깔립니다. 이미 있는 파일은 덮어쓰지 않습니다. 검사 도구와 스킬만 새 버전으로 바꾸려면 `--force`를 붙입니다. 설계 문서는 `--force`에도 덮어쓰지 않습니다.
+
+웹 프로토타입을 시작할 때는 `--phaser`(또는 `--phaser=폴더`)를 붙입니다. `prototype/`에 [Phaser 4 템플릿](templates/phaser/README.md)이 깔리고, 그 안에서 `npm install`을 합니다. 스크린샷 검사에는 저장소 루트에 Playwright가 필요합니다.
+
+```bash
+node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소> --phaser
+```
 
 ## 작업 흐름
 
@@ -119,6 +126,12 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 | web-prototype | Claude (Phaser 4) | 스크린샷(`screenshot` 있을 때) | |
 | code | Claude | `acceptance_commands`의 테스트 | |
 
+### 웹 프로토타입(Phaser 4)
+
+재미를 빨리 확인하고 **버리는** 프로토타입입니다. 데이터(`data/*.json`)와 대사 JSON은 Godot 본편과 같은 파일을 읽습니다(Vite `publicDir`가 `../data`). 규칙 로직은 `src/rules/`의 순수 함수에 두고 Vitest로 테스트하며, 목록·대사 같은 글자 UI는 캔버스 옆 DOM 패널(`#hud`)에 그려 스크린샷 검사가 글자를 읽을 수 있게 합니다. 엔진 중립 대사 JSON의 작은 재생기(`src/dialogue/player.ts`, 조건·변수 포함)도 들어 있습니다. 자세한 것은 [templates/phaser/README.md](templates/phaser/README.md).
+
+web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<계약 제목>"}`와 `acceptance_commands: ["npm --prefix prototype test"]`로 검사합니다(예: `examples/tasks/contract-board-ui.json`).
+
 ## 검사를 믿을 수 있게 하는 규칙
 
 - **red-first.** `start`는 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 넘어갑니다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절합니다. 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하기 때문입니다. 새 파일을 만드는 작업은 파일이 없어 자연히 실패합니다. 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다. 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적습니다.
@@ -142,7 +155,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 npm test
 ```
 
-`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 24에서 돕니다.
+`start`·`verify` 테스트는 임시 git 저장소를 만들어 실제로 커밋하고 비교합니다. CI는 Node 24에서 돌고, 별도 잡이 Phaser 템플릿을 임시 저장소에 깔아 `npm install`·Vitest·tsc·빌드·Playwright 스크린샷 검사까지 돌립니다. Phaser·Vite 새 버전에서 템플릿이 깨지면 거기서 드러납니다.
 
 ## 라이선스
 

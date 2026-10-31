@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {install} from '../scripts/setup.mjs';
+import {install,installPhaser} from '../scripts/setup.mjs';
 
 function gitRepo(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-setup-'));
@@ -36,4 +36,19 @@ test('있는 파일은 덮어쓰지 않고, --force도 문서는 건드리지 �
  assert.ok(forced.includes('tools/hfgs/validate-data.mjs'));
  assert.equal(fs.readFileSync(path.join(repo,'hyperfusion.config.json'),'utf8'),'{"mine":true}','지우지 않는다');
  assert.equal(fs.readFileSync(path.join(repo,'design','gdd.md'),'utf8'),'내 GDD');
+});
+
+test('--phaser: 템플릿을 prototype/에 깔고, 있는 파일은 절대 덮어쓰지 않는다',()=>{
+ const repo=gitRepo(),done=installPhaser(repo,{log:()=>{}});
+ for(const f of ['prototype/package.json','prototype/vite.config.ts','prototype/index.html','prototype/src/main.ts','prototype/src/rules/contract.ts','prototype/src/rules/contract.test.ts','prototype/src/dialogue/player.ts'])
+  assert.ok(done.includes(f),f);
+ fs.writeFileSync(path.join(repo,'prototype','src','main.ts'),'mine');
+ assert.deepEqual(installPhaser(repo,{log:()=>{}}),[]);
+ assert.equal(fs.readFileSync(path.join(repo,'prototype','src','main.ts'),'utf8'),'mine');
+ assert.ok(installPhaser(repo,{dir:'web',log:()=>{}}).includes('web/package.json'),'다른 폴더 이름');
+ assert.throws(()=>installPhaser(repo,{dir:'../x'}),/폴더 이름/);
+ // 템플릿 package.json은 Phaser 4.2.x에 고정이고, 스크린샷 도구 경로는 저장소의 tools/hfgs를 가리킨다.
+ const pkg=JSON.parse(fs.readFileSync(path.join(repo,'prototype','package.json'),'utf8'));
+ assert.match(pkg.dependencies.phaser,/^4\.2\./);
+ assert.match(pkg.scripts.shot,/\.\.\/tools\/hfgs\/screenshot\.mjs/);
 });
