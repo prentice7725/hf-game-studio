@@ -9,6 +9,7 @@
     "test": "node --test tests/*.test.mjs",
     "task": "node scripts/task.mjs",
     "consult": "node scripts/consult.mjs",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "assets": "node scripts/assets.mjs"
   }
 }

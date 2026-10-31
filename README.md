@@ -23,6 +23,7 @@ scripts/
   task.mjs                 작업 컨트롤러: plan(검증·읽을 문서·규칙·검사), start(red-first·작업 전 기록),
                            check(검사만), verify(검사·범위·기준 파일 불변 + 리뷰 명령)
   consult.mjs              다른 계열 전문가 호출: review, write(Argon), dispose, stats
+  assets.mjs               이미지·효과음: asset-pipeline MCP 서버를 직접 띄워 generate(후보 여러 개) → 사람이 고르면 pick
   setup.mjs                게임 저장소에 설치
   lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
     cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
@@ -75,7 +76,7 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소> --godo
 
 ```text
 작업 파일 작성 → task.mjs start (red-first, 작업 전 기록)
-  → 구현: Claude 직접 | consult.mjs write (Argon) | asset-pipeline MCP (Claude가 호출)
+  → 구현: Claude 직접 | consult.mjs write (Argon) | assets.mjs generate (asset-pipeline MCP) → 사람이 고르면 assets.mjs pick
   → task.mjs verify (검사 통과 + 범위 안 + 기준 파일 불변)
   → consult.mjs review (다른 계열) → dispose → 고칠 것이 있으면 다시 verify
   → 그림·소리는 사람이 승인
@@ -117,7 +118,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 | `context_docs`, `context_sections` | 읽을 단일 원본 문서와 섹션. 기본은 `design/` 네 문서 중 있는 것 |
 | `schema`, `data_files`, `expect` | 데이터 스키마 검사. `expect`는 바뀌어야 할 값 `{"/mercenaries/[id=ash]/hire_cost": 120}` |
 | `glossary` | narrative 전용. 대사 검사의 용어집(기본 `design/glossary.md`) |
-| `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 PNG·WAV |
+| `assets_manifest`, `asset_files` | 애셋 규격 검사. `asset_files`를 생략하면 `scope.paths`의 PNG·WAV. 매니페스트 항목의 `prompt`(선택 `negative_prompt`)가 생성 프롬프트 |
 | `asset_pipeline` | `project_id`, `output_class`, `duration_seconds`(SFX), `workflow_id`·`reference_image`(art-edit) |
 | `screenshot` | `url`·`file`·`electron` 중 하나와 `selector`(필수), `serve`, `expect_text`, `name`. 로컬 서버 주소면 `serve` 필수 |
 
@@ -134,6 +135,22 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 | sfx | asset-pipeline | WAV 매니페스트 | `assets_manifest`, `asset_pipeline` |
 | web-prototype | Claude (Phaser 4) | 스크린샷(`screenshot` 있을 때) | |
 | code | Claude | `acceptance_commands`의 테스트 | |
+
+### 애셋(이미지·효과음)
+
+Claude는 그림을 그리거나 소리를 합성할 수 없으므로 `scripts/assets.mjs`가 [asset-pipeline](https://github.com/prentice7725/asset-pipeline) MCP 서버를 stdio로 직접 띄워 `asset_build_brief → asset_route → asset_generate → asset_inspect_run`을 돈다. 서버 명령은 Claude Code에 등록된 것(`~/.claude.json`의 `mcpServers.asset_pipeline`)을 그대로 읽고, `HFGS_ASSET_MCP`(JSON)로 바꿀 수 있다. 무엇을 만들지는 작업 파일이 아니라 애셋 매니페스트 항목의 `prompt`에 적는다(규격과 프롬프트가 한 곳, 그리고 매니페스트는 검사 기준이라 작업 범위 밖).
+
+```bash
+node ~/.claude/skills/hf-game-studio/scripts/assets.mjs generate tasks/merc-portrait-pipeline.json --repo . --candidates 3 --seed 7
+```
+
+후보는 `~/.hf-game-studio/assets/<task_id>/`에 모이고(게임 저장소에는 쓰지 않음) 각각 매니페스트 규격 검사 결과가 붙는다. run_id·상태·검토 상태는 같은 곳의 `<task_id>.json`(작업 노트)에 남는다. 실패하면 재시도 없이 멈춘다(사용자와 상의). 사용자가 보고(들고) 고르면 그 번호를 매니페스트 경로로 옮긴다:
+
+```bash
+node ~/.claude/skills/hf-game-studio/scripts/assets.mjs pick tasks/merc-portrait-pipeline.json 2 --approved --repo .
+```
+
+`--approved`는 사용자가 직접 승인했다는 뜻이라 리드가 혼자 붙이지 않는다. 규격에 맞지 않는 후보는 거절되고, 형식 변환·리사이즈만 한 파일을 저장소 밖에 두고 `--from`으로 넘긴다(다시 그리거나 편집하지 않는다). 그 뒤 `task.mjs verify`가 매니페스트 검사를 돈다.
 
 ### 웹 프로토타입(Phaser 4)
 

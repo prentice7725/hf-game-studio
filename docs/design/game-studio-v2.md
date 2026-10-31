@@ -146,8 +146,8 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 | gdd, lore | Claude 구조 + Argon 문장 | 용어집 일관성 검수(리드) | 있음 |
 | narrative(대사) | Argon 쓰고 Claude 검수 | `dialogue-to-dtl.mjs --check`(스키마 + 그래프 규칙 + 용어집 + `.dtl` 변환) | 있음 |
 | balance-data, economy-data, level | Claude | JSON 스키마(+ `expect`) | 있음 |
-| art-image, art-edit | asset-pipeline(리드가 MCP 호출) | 매니페스트 + 사람 승인 | 있음 |
-| sfx | asset-pipeline | WAV 매니페스트 + 사람 청취 | 있음 |
+| art-image, art-edit | asset-pipeline(`assets.mjs`가 MCP 호출) | 매니페스트 + 사람 승인(`pick --approved`) | 있음 |
+| sfx | asset-pipeline(`assets.mjs`) | WAV 매니페스트 + 사람 청취 | 있음 |
 | web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(템플릿 `templates/phaser/`) |
 | code | Claude | `acceptance_commands`의 테스트 | 있음 |
 | sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 | 5·10단계 뒤 |
@@ -168,12 +168,12 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 2. ✅ (PR 10) **hyperfusion에서 옮겨 오기:** 외부 CLI 어댑터(codex, agy, grok), 비밀 차단과 마스킹을 `scripts/lib/`로 줄여 옮긴다.
 3. ✅ (PR 11) **전문가 호출 스크립트:** `scripts/consult.mjs`에 `review`(codex 읽기 전용, 결론 없이 diff와 검사 결과만 전달, 지적별 처분)와 `write`(agy Argon)를 만든다.
 4. ✅ (PR 12) **대사 파이프라인:** 대사 JSON 스키마, 용어집 검사, `dialogue-to-dtl.mjs` 변환기. narrative brief의 수용 검사는 이 `--check`로 자동 생성된다.
-5. **애셋 스크립트:** 매니페스트 항목(프롬프트, 종류, 길이)을 읽어 asset-pipeline MCP를 직접 부르는 `scripts/assets.mjs`를 만든다. 후보 여러 개 생성을 지원한다.
+5. ✅ **애셋 스크립트:** `scripts/assets.mjs`가 매니페스트 항목의 `prompt`와 작업 파일의 `asset_pipeline`(종류, 길이, workflow, 참조)을 읽어 asset-pipeline MCP 서버를 stdio로 직접 띄우고 brief → route → generate → inspect를 한 프로세스 안에서 돈다(서버가 죽으면 STARTING run의 자식을 추적할 수 없어서). `--candidates N --seed S`로 후보 여러 개를 순서대로 만들고(ComfyUI는 GPU 하나라 동시 실행하지 않음), 후보는 `HFGS_HOME/assets/<task_id>/`에 모아 규격 검사를 붙인다. 사람이 고른 것만 `pick --approved`로 매니페스트 경로에 들어간다. 실패하면 재시도 없이 멈춘다. 가짜 MCP 서버로 흐름을 테스트하고, 실제 asset-pipeline에 붙여 SFX(Stable Audio 3, 1.49초 스테레오 WAV, 규격 OK)와 NONPIXEL_IMAGE(krea2_base 초상화) 후보 생성까지 확인했다. 실측: ComfyUI 이미지 결과는 1024×1024·알파 없음·913KB라 매니페스트(256×256, 투명, 512KB)와 맞지 않는다. 크기·용량은 리드가 변환해 `pick --from`으로 넘길 수 있지만 배경 제거는 "변환만"의 범위를 넘는다. asset-pipeline의 초상화 전달(리사이즈 + 배경 제거)은 프로젝트 SOT의 `delivery_profile`과 `project_contract_required`가 있어야 켜지므로 10단계에서 다룬다.
 6. ✅ **Phaser 템플릿:** `templates/phaser/`에 Phaser 4.2 + Vite 8 + TypeScript, Vitest(규칙·대사 재생기), 데이터·대사 JSON 로더, DOM 패널(`#hud`)을 둔다. `setup.mjs --phaser`로 `prototype/`에 깐다. 스크린샷은 기존 `tools/hfgs/screenshot.mjs --serve`로 찍고, 글자 확인은 캔버스 픽셀이 아니라 DOM 패널로 한다(Phaser 4는 WebGL 전용이라 헤드리스 SwiftShader에서 픽셀 비교가 흔들림). CI 잡 `phaser-template`이 실제 설치·테스트·빌드·스크린샷을 돌린다.
 7. ✅ **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot(GL Compatibility), 규칙·데이터 로더·gdUnit4 테스트, Dialogic 스모크 테스트를 두고 `setup.mjs --godot`으로 저장소 루트에 깐다. 애드온은 `tools/hfgs/godot-addons.mjs`가 git 태그(gdUnit4 v6.2.2, Dialogic 2.0-alpha-20, Aseprite Wizard v9.8.0-4)로 받는다. 검사는 `tools/hfgs/godot-check.mjs`(syntax·test·run·shot). 세션 환경에서는 외부 바이너리 실행이 막혀 CI 잡 `godot-template`이 실제 Godot 4.7.2로 검증한다. Dialogic 2는 아직 alpha라 4.7에서의 동작은 그 잡의 스모크 테스트가 확인한다.
 8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
 9. ✅ (5~8보다 앞당겨 진행) **hyperfusion 의존 제거:** `brief.mjs`(hyperfusion brief 변환)를 `task.mjs`(plan·start·check·verify)로 바꾸고, `game-kinds.json`에서 task_kind 매핑을 걷어 내 종류를 직접 정의하고, setup의 hyperfusion 프리셋과 CI의 hyperfusion 체크아웃을 지웠다. red-first와 검사 기준 파일 불변 규칙은 `task.mjs`에 남겼다. 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어 앞당겼다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
-10. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션.
+10. **asset-pipeline 개선 요청:** 픽셀 색 줄이기, idle·attack 애니메이션, 그리고 매니페스트 규격(크기·투명·용량)대로 내보내기. 지금은 초상화 전달 경로가 프로젝트 SOT 설정(`delivery_profile`, `project_contract_required`, `asset_type: character_portrait`)이 있어야 켜지므로, brief의 `constraints.resolution`·`transparency`만으로도 리사이즈·배경 제거가 되게 하거나 hf-game-studio의 매니페스트에서 그 SOT를 만들어 주는 쪽을 정해야 한다.
 
 ## 남은 확인 거리
 
