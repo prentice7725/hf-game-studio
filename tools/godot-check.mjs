@@ -4,7 +4,9 @@
 //   syntax  --import로 클래스 캐시를 만든 뒤 scripts/·test/의 .gd를 하나씩 --check-only로 파싱한다
 //   test    gdUnit4 CLI(--headless, --ignoreHeadlessMode)로 test/를 돈다. 종료 코드 0 성공, 100 실패, 101 경고(통과로 봄).
 //           Godot 4.7.2가 테스트를 다 돌린 뒤 종료 시그널로 죽는 일이 있어(CI 실측), 그때는 gdUnit4가 찍은 "Exit code: N"을 쓴다
-//   run     헤드레스로 시작 장면을 몇 프레임 띄워 스크립트 오류가 없고 HFGS_READY 로그가 나오는지 본다
+//   run     헤드레스로 시작 장면을 몇 프레임 띄워 스크립트 오류가 없고 HFGS_READY 로그가 나오는지 본다.
+//           헤드리스에는 입력 이벤트가 없어 Dialogic의 'InputMap action "dialogic_default_action" doesn't exist'(PR 20 실측)는 로그에
+//           안 나오므로, 애드온이 project.godot에 요구하는 설정(자동 로드·입력 액션)이 있는지 파일로 따로 본다
 //   shot    창을 띄워(리눅스는 xvfb-run) Movie Maker로 프레임 PNG를 남긴다. 사람이 보는 용도이고 픽셀 비교는 하지 않는다
 //   all     syntax + test + run (shot은 따로)
 // 종료 코드: 통과 0, 실패 1, 사용법·환경 오류 2.
@@ -12,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
+import {ADDONS,hasProjectSetting} from './godot-addons.mjs';
 
 export const SCRIPT_DIRS=['scripts','test'];
 export const ERROR_PATTERN=/SCRIPT ERROR|Parse Error|ERROR: |Failed to load|Cannot open|Unexpected token/;
@@ -75,9 +78,22 @@ export function runTests(bin,project,opts={}){
  return [`gdUnit4 ${code===100?'실패':'종료 코드 '+code}: ${tail(r.output)}`];
 }
 
+// 깔린 애드온이 project.godot에 요구하는 설정이 빠졌는지 본다. 플러그인을 에디터 대신 파일로 등록하면 _enable_plugin이 쓰는 설정이 빠진다.
+export function checkAddonSettings(project){
+ const projectFile=path.join(project,'project.godot');
+ const text=fs.existsSync(projectFile)?fs.readFileSync(projectFile,'utf8'):'';
+ const problems=[];
+ for(const a of Object.values(ADDONS)){
+  if(!a.settings||!fs.existsSync(path.join(project,'addons',a.dir,'plugin.cfg')))continue;
+  const missing=a.settings.filter(s=>!hasProjectSetting(text,s)).map(s=>`${s.section}/${s.key}`);
+  if(missing.length)problems.push(`addons/${a.dir}가 요구하는 project.godot 설정이 없음: ${missing.join(', ')} (node tools/hfgs/godot-addons.mjs . 로 등록)`);
+ }
+ return problems;
+}
+
 export function checkRun(bin,project,opts={}){
  const r=godot(bin,['--headless','--path',project,'--quit-after','5'],{project,...opts});
- const problems=[];
+ const problems=checkAddonSettings(project);
  if(r.status!==0)problems.push(`종료 코드 ${r.status}`);
  if(ERROR_PATTERN.test(r.output))problems.push('스크립트 오류: '+(r.output.split(/\r?\n/).find(l=>ERROR_PATTERN.test(l))??'').trim());
  if(!r.output.includes(READY_MARK))problems.push(`시작 장면이 ${READY_MARK}를 출력하지 않음(main.gd의 _ready 참고)`);
