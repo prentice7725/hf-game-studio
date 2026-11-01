@@ -56,6 +56,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(name==='asset_inspect_run'){
   const run=runs[args.run_id];
   if(!run)return tool(msg.id,'Unknown run_id',true);
+  if(process.env.FAKE_INSPECT_ERROR)return tool(msg.id,'Error executing tool asset_inspect_run: Path is outside configured roots',true);
   if(run.left-->0)return tool(msg.id,{run_id:args.run_id,status:run.left%2?'STARTING':'RUNNING',outputs:[]});
   const ext=process.env.FAKE_EXT??'.png',out=path.join(dir,args.run_id+ext),other=path.join(dir,args.run_id+'.flac');
   fs.copyFileSync(path.join(dir,'sample'+ext),out);fs.writeFileSync(other,'x');
@@ -229,6 +230,17 @@ test('generate: 경로가 차단되면 생성 전에 멈추고, 생성이 차단
  assert.match(r2.note.candidates[0].error,/Pixel Gate/);
  assert.ok(r2.note.candidates[0].candidate,'실패한 결과물도 사용자가 볼 수 있게 남긴다');
  assert.equal(failed.calls().filter(c=>c.name==='asset_generate').length,1);
+});
+
+test('generate: inspect가 서버 예외로 실패하면 크래시 대신 ERROR로 적고 멈춘다(asset-pipeline 실측: Codex 원본 경로가 루트 밖)',async t=>{
+ const {dir,env}=repo(t),{server,calls}=fake(t,{env:{FAKE_INSPECT_ERROR:'1'}});
+ const task=example('merc-portrait-pipeline.json');
+ const {note}=await withClient(server,client=>generate(task,{repo:dir,client,env,candidates:2,...quick}));
+ assert.equal(note.candidates.length,1);
+ assert.equal(note.candidates[0].status,'ERROR');
+ assert.ok(note.candidates[0].run_id);
+ assert.match(note.candidates[0].error,/asset_inspect_run 실패: .*outside configured roots.*run_id/);
+ assert.equal(calls().filter(c=>c.name==='asset_generate').length,1);
 });
 
 test('generate: 시간 안에 끝나지 않으면 TIMEOUT으로 적고 멈춘다',async t=>{

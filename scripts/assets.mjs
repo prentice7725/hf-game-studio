@@ -208,7 +208,9 @@ export async function generate(task,{repo=process.cwd(),client,candidates=1,seed
   const deadline=Date.now()+timeoutMs;
   let r;
   for(;;){
-   r=await client.call('asset_inspect_run',{run_id:g.run_id});
+   // inspect 자체가 실패하면(서버 쪽 예외) run은 살아 있을 수 있다. 크래시하지 않고 ERROR로 적고 멈춘다.
+   try{r=await client.call('asset_inspect_run',{run_id:g.run_id});}
+   catch(e){r={status:'ERROR',error:`asset_inspect_run 실패: ${e.message}. run은 asset-pipeline에 남아 있다(run_id ${g.run_id})`};break;}
    if(!PENDING.includes(r.status))break;
    if(Date.now()>=deadline){r={...r,status:'TIMEOUT',error:`${Math.round(timeoutMs/60000)}분 안에 끝나지 않음. asset-pipeline 쪽에서는 계속 돌 수 있다`};break;}
    await sleep(intervalMs);
@@ -220,11 +222,11 @@ export async function generate(task,{repo=process.cwd(),client,candidates=1,seed
    fs.copyFileSync(out,copy);
    cand.output=out;cand.candidate=copy;
    cand.spec_errors=checkAsset({...t.spec,file:copy});
-  }else if(r.status!=='FAILED'&&r.status!=='TIMEOUT')cand.error=cand.error??`outputs에 ${t.ext} 파일이 없음`;
+  }else if(!['FAILED','TIMEOUT','ERROR'].includes(r.status))cand.error=cand.error??`outputs에 ${t.ext} 파일이 없음`;
   save();
   log(`후보 ${n}: ${cand.status}${cand.engine_status?` (${cand.engine_status})`:''}${cand.candidate?` → ${cand.candidate}`:''}${cand.spec_errors?.length?` 규격 불일치: ${cand.spec_errors.join('; ')}`:cand.spec_errors?' 규격 OK':''}${cand.error?` 오류: ${cand.error}`:''}`);
   // 실패하면 재시도 없이 멈추고 사용자와 상의한다(SKILL 규칙).
-  if(r.status==='FAILED'||r.status==='TIMEOUT')break;
+  if(['FAILED','TIMEOUT','ERROR'].includes(r.status))break;
  }
  return {note,file:save(),dir};
 }
@@ -297,7 +299,7 @@ async function main(argv){
    console.log('후보는 사용자가 보고(들고) 고른다. 고르면: assets.mjs pick TASK.json <번호> --approved');
   }
   const last=note.candidates.at(-1);
-  return last&&!['FAILED','TIMEOUT','BLOCKED'].includes(last.status)&&last.run_id?0:1;
+  return last&&!['FAILED','TIMEOUT','BLOCKED','ERROR'].includes(last.status)&&last.run_id?0:1;
  }finally{client.close();}
 }
 
