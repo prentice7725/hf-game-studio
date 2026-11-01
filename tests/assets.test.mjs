@@ -140,6 +140,11 @@ test('target·briefArgs·prepareBrief: 매니페스트의 prompt가 brief가 되
  assert.deepEqual(b.workflow_preferences,{preset:'smoke',id:edit.asset_pipeline.workflow_id,allow_experimental:true});
  assert.equal(b.negative_prompt,'text, watermark');
  assert.deepEqual(prepareBrief({workflow_preferences:{}},image,ti.spec).workflow_preferences,{});
+ // 매니페스트 규격 → brief constraints(asset-pipeline이 리사이즈·배경 제거·용량 검사에 쓴다). 기존 constraints 항목은 남긴다.
+ const base={constraints:{resolution:null,transparency:null,palette:[],silhouette:null,style:null}};
+ assert.deepEqual(prepareBrief(base,image,ti.spec).constraints,{resolution:[256,256],transparency:true,max_file_kb:512,palette:[],silhouette:null,style:null});
+ assert.deepEqual(prepareBrief(base,image,{...ti.spec,alpha:false,max_kb:undefined}).constraints,{resolution:[256,256],transparency:null,palette:[],silhouette:null,style:null});
+ assert.ok(!('constraints' in prepareBrief({},sfx,ts.spec)),'SFX에는 이미지 규격을 넣지 않는다');
 });
 
 test('target: prompt 없는 항목, 매니페스트에 없는 파일, 형식이 다른 output_class, 파일 둘은 거절',t=>{

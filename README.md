@@ -138,7 +138,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 
 ### 애셋(이미지·효과음)
 
-Claude는 그림을 그리거나 소리를 합성할 수 없으므로 `scripts/assets.mjs`가 [asset-pipeline](https://github.com/prentice7725/asset-pipeline) MCP 서버를 stdio로 직접 띄워 `asset_build_brief → asset_route → asset_generate → asset_inspect_run`을 돈다. 서버 명령은 Claude Code에 등록된 것(`~/.claude.json`의 `mcpServers.asset_pipeline`)을 그대로 읽고, `HFGS_ASSET_MCP`(JSON)로 바꿀 수 있다. 무엇을 만들지는 작업 파일이 아니라 애셋 매니페스트 항목의 `prompt`에 적는다(규격과 프롬프트가 한 곳, 그리고 매니페스트는 검사 기준이라 작업 범위 밖).
+Claude는 그림을 그리거나 소리를 합성할 수 없으므로 `scripts/assets.mjs`가 [asset-pipeline](https://github.com/prentice7725/asset-pipeline) MCP 서버를 stdio로 직접 띄워 `asset_build_brief → asset_route → asset_generate → asset_inspect_run`을 돈다. 서버 명령은 Claude Code에 등록된 것(`~/.claude.json`의 `mcpServers.asset_pipeline`)을 그대로 읽고, `HFGS_ASSET_MCP`(JSON)로 바꿀 수 있다. 무엇을 만들지는 작업 파일이 아니라 애셋 매니페스트 항목의 `prompt`에 적는다(규격과 프롬프트가 한 곳, 그리고 매니페스트는 검사 기준이라 작업 범위 밖). 매니페스트의 `width`·`height`·`alpha`·`max_kb`는 brief의 `constraints`(`resolution`, `transparency`, `max_file_kb`)로 넘어가서 asset-pipeline이 리사이즈·배경 제거·용량 검사를 한 뒤 후보를 내놓는다(asset-pipeline [PR 43](https://github.com/prentice7725/asset-pipeline/pull/43) 이후 버전 필요. 그 전 버전은 `max_file_kb`를 몰라 brief 검증에서 거절한다).
 
 ```bash
 node ~/.claude/skills/hf-game-studio/scripts/assets.mjs generate tasks/merc-portrait-pipeline.json --repo . --candidates 3 --seed 7
