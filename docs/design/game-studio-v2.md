@@ -127,6 +127,25 @@ hyperfusion은 Claude 토큰을 아끼려는 위임 엔진이라 라운드, 리�
 
 Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai**, 가벼운 대안은 **Coding-Solo/godot-mcp**로 한다. 실제 프로젝트에서 한 장면을 만들고, 실행하고, 스크린샷을 찍고, 테스트를 돌려 본 뒤 고른다.
 
+### 평가 결과(2026-11-01, Godot 4.7.2, Windows)
+
+`templates/godot` + 애드온 셋을 깐 임시 프로젝트에서 둘 다 같은 일을 시켰다: Control 장면 만들기 → Label 추가·속성 설정 → 실행 → 출력 읽기 → 스크린샷.
+
+| | godot-ai 4.3.1 | Coding-Solo godot-mcp 0.1.1 |
+|---|---|---|
+| 붙는 방식 | 에디터 GUI가 떠 있어야 함. 애드온이 `uvx`로 Python 서버(HTTP 8000, WS 9500)를 띄우고, 클라이언트는 `uvx --from godot-ai==4.3.1 godot-ai attach --port … --ws-port …`로 stdio 연결 | `node build/index.js`가 Godot 실행 파일을 `--headless --script godot_operations.gd`로 호출 |
+| 장면 편집 | 에디터 안에서 되며 실행 취소 가능(`undoable: true`). 경로는 장면 루트 기준(`/root/Reward`) | `.tscn`을 헤드리스로 열어 저장. 호출마다 Godot 부팅 3.8초 |
+| 실행·출력 | `project_run`(main/current/custom) 후 게임 헬퍼가 살아나면 `logs_read(source=game)`에 run_id별 경고·오류가 구조화돼 옴 | `run_project` + `get_debug_output`: stdout/stderr 원문 |
+| 스크린샷 | `editor_screenshot(source=game)` 960×540 PNG, 0.15초. 글자가 또렷해 리드가 바로 본다 | 없음 |
+| 게임 안 검사 | `game_manage`: UI 요소 목록(rect 포함), 키·마우스·액션 입력, 프레임 단위 정지 | 없음 |
+| 테스트 | `test_run`은 자체 `res://tests/test_*.gd` 규약이라 gdUnit4(`test/`)와 안 맞음 | 없음 |
+| 도구 수 | 47(묶음 안에 120여 동작) | 14 |
+| 걸림돌 | 사용자 계정에 이미 다른 godot-ai 서버가 8000을 쓰고 있으면(전역 클라이언트 설정의 잔재) 에디터가 8001/9501로 비켜 뜨므로, attach 포트는 에디터 로그의 `MCP \| started server` 앞뒤에서 확인해야 한다. 첫 attach는 uvx 캐시가 비어 있으면 16초 | `properties`의 문자열이 공백에서 잘려 로그에 찍히지만(`text = 곡물`) 저장된 `.tscn`은 온전하다. `--headless`라 에디터에 보이는 상태와 무관 |
+
+**선택: godot-ai.** 플레이테스트에 필요한 셋(실행, 입력, 스크린샷)을 다 갖췄고 리드가 스크린샷을 직접 볼 수 있다. Coding-Solo는 `godot-check.mjs run`이 이미 하는 일(헤드리스 실행과 로그)에 장면 생성을 더한 정도라 따로 들이지 않는다. gdUnit4 실행은 계속 `godot-check.mjs test`로 한다(godot-ai의 `test_run`은 쓰지 않는다).
+
+쓰는 법은 `SKILL.md`의 Godot 본편 절에 있다. 평가 중 템플릿에서 하나 더 드러났다: Dialogic 2가 게임 실행 중 `InputMap action "dialogic_default_action" doesn't exist`를 매 프레임 찍는다(`subsystem_input.gd:148`). 헤드리스 `run` 검사는 `HFGS_READY`만 보므로 못 잡았다. 템플릿 `project.godot`에 그 액션을 넣거나 Dialogic 설정으로 끌지 결정해야 한다.
+
 ## 애셋을 Godot으로
 
 - **정지 이미지(PNG):** 그대로 가져온다. 매니페스트의 크기·투명도 검사를 유지한다.
@@ -151,7 +170,7 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 | web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(템플릿 `templates/phaser/`) |
 | code | Claude | `acceptance_commands`의 테스트 | 있음 |
 | sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 | 5·10단계 뒤 |
-| godot-scene, godot-code | Claude (+ Godot MCP는 8단계) | `godot-check.mjs all`(문법 + gdUnit4 + 헤드리스 부팅) + `shot` 프레임 | 있음(템플릿 `templates/godot/`) |
+| godot-scene, godot-code | Claude (+ godot-ai MCP로 실행·입력·스크린샷) | `godot-check.mjs all`(문법 + gdUnit4 + 헤드리스 부팅) + `shot` 프레임 | 있음(템플릿 `templates/godot/`) |
 | review | 다른 계열 모델 | 지적 목록 | 있음(`consult.mjs review`, 작업 종류가 아니라 모든 작업의 마지막 단계) |
 
 ## 참고할 외부 프로젝트
@@ -171,7 +190,7 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 5. ✅ **애셋 스크립트:** `scripts/assets.mjs`가 매니페스트 항목의 `prompt`와 작업 파일의 `asset_pipeline`(종류, 길이, workflow, 참조)을 읽어 asset-pipeline MCP 서버를 stdio로 직접 띄우고 brief → route → generate → inspect를 한 프로세스 안에서 돈다(서버가 죽으면 STARTING run의 자식을 추적할 수 없어서). `--candidates N --seed S`로 후보 여러 개를 순서대로 만들고(ComfyUI는 GPU 하나라 동시 실행하지 않음), 후보는 `HFGS_HOME/assets/<task_id>/`에 모아 규격 검사를 붙인다. 사람이 고른 것만 `pick --approved`로 매니페스트 경로에 들어간다. 실패하면 재시도 없이 멈춘다. 가짜 MCP 서버로 흐름을 테스트하고, 실제 asset-pipeline에 붙여 SFX(Stable Audio 3, 1.49초 스테레오 WAV, 규격 OK)와 NONPIXEL_IMAGE(krea2_base 초상화) 후보 생성까지 확인했다. 실측: ComfyUI 이미지 결과는 1024×1024·알파 없음·913KB라 매니페스트(256×256, 투명, 512KB)와 맞지 않는다. 크기·용량은 리드가 변환해 `pick --from`으로 넘길 수 있지만 배경 제거는 "변환만"의 범위를 넘는다. asset-pipeline의 초상화 전달(리사이즈 + 배경 제거)은 프로젝트 SOT의 `delivery_profile`과 `project_contract_required`가 있어야 켜지므로 10단계에서 다룬다.
 6. ✅ **Phaser 템플릿:** `templates/phaser/`에 Phaser 4.2 + Vite 8 + TypeScript, Vitest(규칙·대사 재생기), 데이터·대사 JSON 로더, DOM 패널(`#hud`)을 둔다. `setup.mjs --phaser`로 `prototype/`에 깐다. 스크린샷은 기존 `tools/hfgs/screenshot.mjs --serve`로 찍고, 글자 확인은 캔버스 픽셀이 아니라 DOM 패널로 한다(Phaser 4는 WebGL 전용이라 헤드리스 SwiftShader에서 픽셀 비교가 흔들림). CI 잡 `phaser-template`이 실제 설치·테스트·빌드·스크린샷을 돌린다.
 7. ✅ **Godot 템플릿:** `templates/godot/`에 Godot 4.7 project.godot(GL Compatibility), 규칙·데이터 로더·gdUnit4 테스트, Dialogic 스모크 테스트를 두고 `setup.mjs --godot`으로 저장소 루트에 깐다. 애드온은 `tools/hfgs/godot-addons.mjs`가 git 태그(gdUnit4 v6.2.2, Dialogic 2.0-alpha-20, Aseprite Wizard v9.8.0-4)로 받는다. 검사는 `tools/hfgs/godot-check.mjs`(syntax·test·run·shot). 세션 환경에서는 외부 바이너리 실행이 막혀 CI 잡 `godot-template`이 실제 Godot 4.7.2로 검증한다. Dialogic 2는 아직 alpha라 4.7에서의 동작은 그 잡의 스모크 테스트가 확인한다.
-8. **Godot MCP 평가:** godot-ai와 Coding-Solo를 실제 프로젝트에 붙여 비교한다.
+8. ✅ **Godot MCP 평가:** godot-ai 4.3.1과 Coding-Solo 0.1.1을 Godot 4.7.2 임시 프로젝트에 붙여 비교했다(위 "Godot MCP 후보"의 평가 결과). godot-ai를 쓴다. 코드 변경은 없고 `SKILL.md`에 붙이는 법만 적었다.
 9. ✅ (5~8보다 앞당겨 진행) **hyperfusion 의존 제거:** `brief.mjs`(hyperfusion brief 변환)를 `task.mjs`(plan·start·check·verify)로 바꾸고, `game-kinds.json`에서 task_kind 매핑을 걷어 내 종류를 직접 정의하고, setup의 hyperfusion 프리셋과 CI의 hyperfusion 체크아웃을 지웠다. red-first와 검사 기준 파일 불변 규칙은 `task.mjs`에 남겼다. 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어 앞당겼다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
 10. ✅ (asset-pipeline [PR 43](https://github.com/prentice7725/asset-pipeline/pull/43), 2026-11-01 열림) **asset-pipeline 개선 요청:** brief의 `constraints.resolution`·`transparency`만으로 리사이즈·배경 제거(rembg)가 돌고 `constraints.max_file_kb`로 용량을 검사한다(프로젝트 SOT가 있으면 SOT가 우선). PIXEL_STATIC은 Pixel Gate 앞에 32색 양자화. idle·attack은 조사 메모만. hf-game-studio 쪽은 `assets.mjs`의 `prepareBrief`가 매니페스트의 `width/height/alpha/max_kb`를 그 constraints로 넘긴다. 사람 검토 게이트는 그대로다.
 
