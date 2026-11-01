@@ -160,7 +160,7 @@ web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype ru
 
 ### Godot 본편(4.7)
 
-프로토타입에서 확인한 재미를 Godot으로 만듭니다. 데이터·대사 JSON·애셋은 프로토타입과 같은 파일이고, 규칙 공식(`scripts/rules/contract_rules.gd`)은 프로토타입의 `contract.ts`와 같은 숫자를 내야 합니다(두 테스트가 같은 경우를 봅니다). 대사는 `tools/hfgs/dialogue-to-dtl.mjs ... --out-dir dialogue`로 `.dtl`을 만들어 Dialogic 2가 읽습니다. 자세한 것은 [templates/godot/README.md](templates/godot/README.md).
+프로토타입에서 확인한 재미를 Godot으로 만듭니다. 데이터·대사 JSON·애셋은 프로토타입과 같은 파일이고, 규칙 공식(`scripts/rules/contract_rules.gd`)은 프로토타입의 `contract.ts`와 같은 숫자를 내야 합니다(두 테스트가 같은 경우를 봅니다). 대사는 `tools/hfgs/dialogue-to-dtl.mjs ... --out-dir dialogue`로 `.dtl`을 만들어 Dialogic 2가 읽습니다. 자세한 것은 [templates/godot/README.md](templates/godot/README.md). 에디터 조작과 플레이테스트(실행·입력·스크린샷)는 hi-godot/godot-ai MCP로 합니다. 붙이는 법은 [SKILL.md](SKILL.md)의 Godot 본편 절, 선택 근거는 [설계 문서](docs/design/game-studio-v2.md)의 "Godot MCP 후보"에 있습니다.
 
 | 검사 | 명령 | 하는 일 |
 |---|---|---|
