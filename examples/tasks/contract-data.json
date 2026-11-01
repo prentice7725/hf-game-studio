@@ -1,0 +1,26 @@
+{
+  "task_id": "M1-T1b-contract-data",
+  "kind": "balance-data",
+  "objective": "Create the first contract, the grain cart escort (id grain-cart, title 곡물 수레 호위, difficulty 3, check might, intro_dialogue contract-grain-cart), in data/contracts.json following design/gdd.md and the contracts schema.",
+  "scope": {
+    "paths": [
+      "data/contracts.json"
+    ]
+  },
+  "schema": "design/schemas/contracts.schema.json",
+  "context_sections": {
+    "design/gdd.md": [
+      "규칙",
+      "수치와 공식"
+    ]
+  },
+  "success_criteria": [
+    "AC1: data/contracts.json validates against design/schemas/contracts.schema.json and contains exactly one contract with id grain-cart",
+    "AC2: the contract has difficulty 3 and check might so that Ash (might 5) has a 50% success chance under the GDD formula, and intro_dialogue is contract-grain-cart"
+  ],
+  "acceptance_map": {
+    "AC1": [
+      "@auto"
+    ]
+  }
+}

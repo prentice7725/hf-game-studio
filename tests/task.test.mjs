@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,sections,dirtyPaths,hashFiles,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
+import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
 const VERIFIES=['schema','dialogue','assets','screenshot','godot'];
@@ -64,6 +64,36 @@ test('balance-data: 스키마 검사, @auto 매핑, 읽기 지시, 역할 규칙
  assert.ok(warnings.some(w=>w.includes('design/world.md')),'없는 문서는 경고');
 });
 
+test('balance-data: 계약 데이터 작업은 contracts 스키마 검사 하나이고 화면 작업이 읽는 grain-cart를 만든다',()=>{
+ const g=example('contract-data.json'),p=plan(g,{repo:repoWithDocs()});
+ assert.equal(p.owner,'claude');
+ assert.deepEqual(p.scope,['data/contracts.json']);
+ assert.deepEqual(p.acceptance_commands,['node tools/hfgs/validate-data.mjs design/schemas/contracts.schema.json data/contracts.json']);
+ assert.deepEqual(p.criteria_files,['design/schemas/contracts.schema.json']);
+ assert.match(g.objective,/grain-cart.*difficulty 3.*check might.*intro_dialogue contract-grain-cart/);
+ // 화면 작업(contract-board-ui)이 이 파일을 읽는다. 대사 작업이 만드는 대사 ID와도 맞아야 한다.
+ assert.match(fs.readFileSync(path.join(STUDIO_ROOT,'templates','phaser','src','data','load.ts'),'utf8'),/contracts\.json/);
+ assert.match(example('contract-intro-dialogue.json').objective,/contract-grain-cart/);
+ // 마일스톤 표에서 1번(용병 데이터) 다음에 온다.
+ const rows=fs.readFileSync(path.join(STUDIO_ROOT,'examples','milestone-1.md'),'utf8').split(/\r?\n/).filter(l=>/^\| \d+ \|/.test(l));
+ assert.match(rows[0],/merc-data\.json/);assert.match(rows[1],/contract-data\.json/);
+ assert.equal(rows.length,fs.readdirSync(path.join(STUDIO_ROOT,'examples','tasks')).filter(f=>f.startsWith('contract-')||f.startsWith('merc-')||f.startsWith('sword-')).length-1,'M2 작업(contract-rules-godot) 빼고 모두 표에 있다');
+});
+
+test('web-prototype: 계약 게시판 작업은 템플릿이 이미 하는 일(목록·확률)이 아니라 GDD 계약 해결(받기 → 판정 → 장부 → 금화 표시)을 시킨다',()=>{
+ const g=example('contract-board-ui.json'),p=plan(g,{repo:repoWithDocs()});
+ assert.equal(p.owner,'claude');
+ assert.ok(p.scope.includes('prototype/src/rules/guild.ts')&&p.scope.includes('prototype/src/rules/guild.test.ts'));
+ assert.equal(g.screenshot.expect_text,'금화');
+ assert.match(g.objective,/resolveContract/);assert.match(g.objective,/guild\.ts/);
+ assert.equal(p.acceptance_commands.length,2,'Vitest + 스크린샷');
+ assert.match(p.acceptance_map.AC1[0],/screenshot\.mjs .*--expect-text "금화"/);
+ // red-first가 처음부터 통과하면 안 된다: 템플릿에는 장부도 금화 표시도 없어야 한다(그 구현은 작업이 할 일이다).
+ const phaser=path.join(STUDIO_ROOT,'templates','phaser','src');
+ assert.ok(!fs.existsSync(path.join(phaser,'rules','guild.ts')),'템플릿에 guild.ts를 미리 넣지 않는다');
+ for(const f of ['ui/hud.ts','main.ts','scenes/ContractBoardScene.ts'])assert.ok(!fs.readFileSync(path.join(phaser,f),'utf8').includes('금화'),`${f}에 금화 표시가 미리 있으면 red-first가 통과한다`);
+});
+
 test('narrative: Argon 작가 brief와 dialogue-to-dtl --check 하나',()=>{
  const p=plan(example('contract-intro-dialogue.json'),{repo:repoWithDocs()});
  assert.equal(p.owner,'claude');
@@ -75,6 +105,9 @@ test('narrative: Argon 작가 brief와 dialogue-to-dtl --check 하나',()=>{
  assert.match(p.write_brief.structure,/design\/schemas\/dialogue\.schema\.json/);
  assert.match(p.write_brief.style,/^Role writer:/);
  assert.deepEqual(p.write_brief.context_docs,['design/glossary.md','design/gdd.md']);
+ // 수용 기준이 brief에 들어가야 작가가 "accept and refuse choices" 같은 요구를 본다(마일스톤 1 실측).
+ assert.deepEqual(p.write_brief.success_criteria,p.success_criteria);
+ assert.ok(p.write_brief.success_criteria.some(c=>/accept and refuse/.test(c)));
 });
 
 test('narrative: 용어집은 검사 기준이라 범위 안에 못 두고, glossary를 적으면 --glossary로 넘긴다',()=>{
@@ -154,8 +187,8 @@ test('art-edit: 참조 이미지와 workflow_id가 필수이고, 참조는 검�
 test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싸고, Vitest는 따로 돈다',()=>{
  const p=plan(example('contract-board-ui.json'),{repo:repoWithDocs()});
  assert.equal(p.owner,'claude');
- assert.deepEqual(p.acceptance_commands,['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url http://localhost:5173 --selector "#hud" --expect-text "곡물 수레 호위" --name M1-T4-contract-board']);
- assert.deepEqual(p.acceptance_map,{AC1:[p.acceptance_commands[1]],AC2:[p.acceptance_commands[0]]});
+ assert.deepEqual(p.acceptance_commands,['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url "http://localhost:5173?seed=hfgs" --selector "#hud" --expect-text "금화" --name M1-T7-contract-board']);
+ assert.deepEqual(p.acceptance_map,{AC1:[p.acceptance_commands[1]],AC3:[p.acceptance_commands[0]]});
  const g=example('contract-board-ui.json');
  delete g.screenshot.serve;
  assert.throws(()=>plan(g,{repo:repoWithDocs()}),/serve가 없음/);
@@ -187,9 +220,19 @@ test('필수 입력·AC 형식·검사 기준 범위를 확인한다',()=>{
  assert.ok(!plan({...g,role:null},{repo}).rules.some(c=>c.startsWith('Role ')),'role:null이면 역할 규칙을 넣지 않는다');
 });
 
-test('quote·sections',()=>{
+test('quote·slashPath·sections: 붙여 넣을 명령은 bash와 PowerShell 어디서나 같은 인자로 읽혀야 한다',()=>{
  assert.equal(quote('data/a.json'),'data/a.json');
  assert.equal(quote('a b'),'"a b"');
+ assert.equal(quote('AC1: 대사가 수락·거절 분기를 가진다'),'"AC1: 대사가 수락·거절 분기를 가진다"','큰따옴표로만 감싼다(JSON 이스케이프 없음)');
+ assert.equal(quote('C:/work space/g'),'"C:/work space/g"');
+ assert.equal(quote('say "hi"'),JSON.stringify('say "hi"'),'큰따옴표가 든 인자만 JSON 이스케이프로 물러난다');
+ assert.equal(slashPath('C:\\workspace\\merc-guild'),'C:/workspace/merc-guild');
+ assert.equal(slashPath('/home/u/g'),'/home/u/g');
+ // 리뷰 명령: Windows 경로가 "C:\\\\workspace\\\\..."처럼 이중 이스케이프되면 git bash에 붙여 넣을 때 깨진다(마일스톤 1 실측).
+ const p={success_criteria:['AC1: x'],acceptance_commands:['node tools/hfgs/validate-data.mjs s.json d.json']};
+ const cmd=reviewCommand(p,{head:'abc123'},{repo:'C:\\work space\\merc-guild',studio:'C:\\Users\\u\\.claude\\skills\\hf-game-studio'});
+ assert.equal(cmd,'node C:/Users/u/.claude/skills/hf-game-studio/scripts/consult.mjs review --repo "C:/work space/merc-guild" --base abc123 --criteria "AC1: x" --check "node tools/hfgs/validate-data.mjs s.json d.json"');
+ assert.ok(!/\\/.test(cmd),'리뷰 명령에 역슬래시가 없다');
  const t='# A\n\n## B\ntext\n```\n# not\n```\n### C\n## D\nx\n';
  assert.deepEqual(sections(t).map(x=>[x.title,x.start,x.end]),[['A',1,10],['B',3,8],['C',8,8],['D',9,10]]);
 });
@@ -246,9 +289,10 @@ test('verify: 검사 통과 + 범위 안 변경이면 통과하고 리뷰 명령
  assert.ok(!warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')),'verify에서는 red-first 경고를 내지 않는다');
  assert.deepEqual(r.changed,['data/mercenaries.json']);
  assert.deepEqual(r.ac.map(a=>a.status),['pass','manual']);
- // 경로는 quote()를 거친다(Windows 경로의 역슬래시는 따옴표로 감싸져 나온다).
+ // 경로는 슬래시로 바꿔 넣는다(Windows의 역슬래시 경로를 그대로 두면 bash에 붙여 넣을 때 깨진다).
  const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- assert.match(r.review_command,new RegExp(`consult\\.mjs"? review --repo ${rx(quote(dir))} --base ${state.head} --criteria "AC1: .*" --criteria "AC2: .*" --check "node tools/hfgs/validate-data\\.mjs .*"$`));
+ assert.match(r.review_command,new RegExp(`consult\\.mjs review --repo ${rx(quote(slashPath(dir)))} --base ${state.head} --criteria "AC1: .*" --criteria "AC2: .*" --check "node tools/hfgs/validate-data\\.mjs .*"$`));
+ assert.ok(!/\\\\/.test(r.review_command),'이중 이스케이프된 역슬래시가 없다');
  const saved=JSON.parse(fs.readFileSync(stateFile(task.task_id,env),'utf8'));
  assert.equal(saved.verify.ok,true);
  assert.throws(()=>start(task,{repo:dir,env}),/이미 끝난 작업/);

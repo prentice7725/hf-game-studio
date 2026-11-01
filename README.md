@@ -18,7 +18,7 @@ Claude가 직접 구현하므로 일꾼 배치·라운드·리스 같은 위임 
 ```text
 SKILL.md                   리드(Claude)용 메인 스킬: 작업 절차와 규칙
 game-kinds.json            게임 작업 종류: 만드는 쪽, 역할, 자동 수용 검사, 규칙
-roles/*.md                 역할 규칙(리드가 따르고, 글 작업은 작가 brief의 style로 들어감)
+roles/*.md                 역할 규칙(리드가 따르고, 글 작업은 작가 brief의 style로 들어감. brief에는 수용 기준도 함께 들어간다)
 scripts/
   task.mjs                 작업 컨트롤러: plan(검증·읽을 문서·규칙·검사), start(red-first·작업 전 기록),
                            check(검사만), verify(검사·범위·기준 파일 불변 + 리뷰 명령)
@@ -90,7 +90,7 @@ node ~/.claude/skills/hf-game-studio/scripts/task.mjs start tasks/merc-data.json
 node ~/.claude/skills/hf-game-studio/scripts/task.mjs verify tasks/merc-data.json --repo .
 ```
 
-verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
+verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 경로는 슬래시로, 공백이 있는 인자는 큰따옴표로만 감싸므로 Windows에서도 bash(git bash)와 PowerShell 어디에든 그대로 붙여 넣을 수 있습니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
 
 ### 작업 파일
 
@@ -156,7 +156,7 @@ node ~/.claude/skills/hf-game-studio/scripts/assets.mjs pick tasks/merc-portrait
 
 재미를 빨리 확인하고 **버리는** 프로토타입입니다. 데이터(`data/*.json`)와 대사 JSON은 Godot 본편과 같은 파일을 읽습니다(Vite `publicDir`가 `../data`). 규칙 로직은 `src/rules/`의 순수 함수에 두고 Vitest로 테스트하며, 목록·대사 같은 글자 UI는 캔버스 옆 DOM 패널(`#hud`)에 그려 스크린샷 검사가 글자를 읽을 수 있게 합니다. 엔진 중립 대사 JSON의 작은 재생기(`src/dialogue/player.ts`, 조건·변수 포함)도 들어 있습니다. 자세한 것은 [templates/phaser/README.md](templates/phaser/README.md).
 
-web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<계약 제목>"}`와 `acceptance_commands: ["npm --prefix prototype test"]`로 검사합니다(예: `examples/tasks/contract-board-ui.json`).
+web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<작업이 새로 그리는 글자>"}`와 `acceptance_commands: ["npm --prefix prototype test"]`로 검사합니다(예: `examples/tasks/contract-board-ui.json`). 템플릿이 이미 계약 목록과 성공 확률을 그리므로 `expect_text`에 계약 제목을 적으면 red-first가 처음부터 통과합니다. 작업은 템플릿에 없는 것(예: GDD "계약 해결": 받기 버튼 → `src/rules/contract.ts`의 `resolveContract` 판정 → `src/rules/guild.ts` 장부 → `#hud`에 결과와 금화 표시)을 시키고, `expect_text`에는 그 결과 글자(예: `금화`)를 적습니다.
 
 ### Godot 본편(4.7)
 

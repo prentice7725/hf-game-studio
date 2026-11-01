@@ -1,30 +1,40 @@
 {
-  "task_id": "M1-T4-contract-board",
+  "task_id": "M1-T7-contract-board",
   "kind": "web-prototype",
   "difficulty": "medium",
-  "objective": "Build the contract board in the Phaser prototype: list contracts from data/contracts.json in the #hud panel and show the success chance from src/rules/contract.ts when one is picked.",
+  "objective": "Implement the GDD rule 계약 해결 in the Phaser prototype: when a contract is picked in the #hud panel, offer a 받기 button that resolves the contract immediately with one random roll using resolveContract from src/rules/contract.ts, adds the reward to the guild gold on success, and shows the result and the gold total (금화) in the #hud panel. Keep the gold ledger as a pure function in src/rules/guild.ts with Vitest tests. The template already lists contracts and shows the success chance; do not redo that.",
   "scope": {
     "paths": [
+      "prototype/src/rules/guild.ts",
+      "prototype/src/rules/guild.test.ts",
       "prototype/src/scenes/ContractBoardScene.ts",
       "prototype/src/ui/hud.ts",
       "prototype/src/main.ts"
     ]
   },
+  "context_sections": {
+    "design/gdd.md": [
+      "규칙",
+      "수치와 공식",
+      "UI 제약"
+    ]
+  },
   "screenshot": {
     "serve": "npm --prefix prototype run dev",
-    "url": "http://localhost:5173",
+    "url": "http://localhost:5173?seed=hfgs",
     "selector": "#hud",
-    "expect_text": "곡물 수레 호위"
+    "expect_text": "금화"
   },
   "success_criteria": [
-    "AC1: the #hud panel lists the grain cart contract title without console errors",
-    "AC2: picking a contract shows the success chance computed by prototype/src/rules/contract.ts (unit tests pass)"
+    "AC1: the #hud panel shows the guild gold total (금화) and the grain cart contract title without console errors",
+    "AC2: picking a contract shows a 받기 button; pressing it resolves the contract with resolveContract from src/rules/contract.ts and shows 성공 or 실패 with the new gold total",
+    "AC3: src/rules/guild.ts applies the reward on success and nothing on failure, and its Vitest tests pass"
   ],
   "acceptance_map": {
     "AC1": [
       "@auto"
     ],
-    "AC2": [
+    "AC3": [
       "npm --prefix prototype test"
     ]
   },
