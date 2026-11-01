@@ -149,10 +149,19 @@ export function briefArgs(task,{file,spec,assetId},{repo}){
  if(p.reference_image)args.reference_image=path.resolve(repo,p.reference_image);
  return args;
 }
+// 매니페스트 규격을 brief의 constraints로 넘긴다. asset-pipeline(PR 43 이후)은 resolution과 transparency가 있으면
+// 리사이즈·배경 제거를 돌리고 max_file_kb를 넘는 파일은 QA에서 FAIL로 처리한다. 그래서 후보가 처음부터 매니페스트에 맞게 나온다.
 export function prepareBrief(brief,task,spec){
  const out={...brief};
  if(task.asset_pipeline.workflow_id)out.workflow_preferences={...(brief.workflow_preferences??{}),id:task.asset_pipeline.workflow_id,allow_experimental:true};
  if(spec.negative_prompt)out.negative_prompt=spec.negative_prompt;
+ if(!/\.wav$/i.test(spec.file)){
+  const c={...(brief.constraints??{})};
+  if(spec.width!==undefined&&spec.height!==undefined)c.resolution=[spec.width,spec.height];
+  if(spec.alpha===true)c.transparency=true;
+  if(spec.max_kb!==undefined)c.max_file_kb=spec.max_kb;
+  out.constraints=c;
+ }
  return out;
 }
 
