@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {checkSyntax,runTests,checkRun,takeShot,gdFiles,findGodot,shotPrefix,ERROR_PATTERN,GDUNIT_TOOL} from '../tools/godot-check.mjs';
-import {installAddons,enablePlugins,ADDONS} from '../tools/godot-addons.mjs';
+import {checkSyntax,runTests,checkRun,checkAddonSettings,takeShot,gdFiles,findGodot,shotPrefix,ERROR_PATTERN,GDUNIT_TOOL} from '../tools/godot-check.mjs';
+import {installAddons,enablePlugins,setProjectSettings,hasProjectSetting,ADDONS,DIALOGIC_SETTINGS} from '../tools/godot-addons.mjs';
 import {installGodot,GDIGNORE_DIRS} from '../scripts/setup.mjs';
 import {STUDIO_ROOT} from '../scripts/task.mjs';
 
@@ -105,6 +105,17 @@ test('run: HFGS_READY와 스크립트 오류를 본다',t=>{
  assert.ok(ERROR_PATTERN.test('SCRIPT ERROR: x')&&!ERROR_PATTERN.test('Godot Engine v4.7.2'));
 });
 
+test('run: Dialogic이 깔렸는데 자동 로드·입력 액션이 project.godot에 없으면 실패(헤드리스 로그에는 안 나오는 오류)',t=>{
+ const {bin,opts}=fakeGodot(t),dir=godotProject(t,{addons:['dialogic']});
+ assert.deepEqual(checkAddonSettings(godotProject(t)),[],'Dialogic이 없으면 요구하지 않는다');
+ const p=checkRun(bin,dir,opts);
+ assert.equal(p.length,1);
+ assert.match(p[0],/addons\/dialogic.*autoload\/Dialogic, input\/dialogic_default_action.*godot-addons\.mjs/);
+ const f=path.join(dir,'project.godot');
+ fs.writeFileSync(f,setProjectSettings(fs.readFileSync(f,'utf8'),DIALOGIC_SETTINGS));
+ assert.deepEqual(checkRun(bin,dir,opts),[]);
+});
+
 test('shot: 프레임 PNG가 생겨야 통과, 리눅스에서 DISPLAY가 없으면 xvfb-run',t=>{
  const {bin,calls,opts}=fakeGodot(t),dir=godotProject(t),out=path.join(dir,'shots');
  const r=takeShot(bin,dir,out,{prefix:[],...opts});
@@ -130,6 +141,22 @@ test('enablePlugins: 없으면 섹션을 만들고, 있으면 합치고, 중복�
  assert.ok(twice.includes('[application]'));
 });
 
+test('setProjectSettings: 없는 설정만 넣고, 섹션이 있으면 끝에, 없으면 새 섹션, 여러 줄 값도 찾는다',()=>{
+ const base='config_version=5\n\n[application]\n\nconfig/name="Game"\n\n[input]\n\nui_x={\n"deadzone": 0.5,\n"events": []\n}\n\n[rendering]\n\nx=1\n';
+ const out=setProjectSettings(base,DIALOGIC_SETTINGS);
+ assert.ok(hasProjectSetting(out,{section:'input',key:'dialogic_default_action'})&&!hasProjectSetting(base,{section:'input',key:'dialogic_default_action'}));
+ assert.ok(hasProjectSetting(out,{section:'autoload',key:'Dialogic'}));
+ assert.ok(!hasProjectSetting(out,{section:'application',key:'Dialogic'}),'다른 섹션의 같은 이름은 세지 않는다');
+ assert.match(out,/\[input\]\n\nui_x=\{\n"deadzone": 0\.5,\n"events": \[\]\n\}\ndialogic_default_action=\{\n[\s\S]*?\n\}\n\n\[rendering\]\n\nx=1\n\n\[autoload\]\n\nDialogic="\*res:\/\/addons\/dialogic\/Core\/DialogicGameHandler\.gd"\n$/);
+ assert.equal(setProjectSettings(out,DIALOGIC_SETTINGS),out,'두 번 돌려도 그대로');
+ // Dialogic plugin.gd의 add_dialogic_default_action과 같은 이벤트: Enter(4194309), 마우스 왼쪽(button_index 1), Space(32), X(88), 패드 A(button_index 0)
+ const action=DIALOGIC_SETTINGS[1].text;
+ for(const k of ['"keycode":4194309','"keycode":32','"keycode":88','InputEventMouseButton,[^\n]*"button_index":1','InputEventJoypadButton,[^\n]*"button_index":0'])assert.match(action,new RegExp(k));
+ // CRLF로 저장된 project.godot(Windows 체크아웃)도 다룬다.
+ const crlf=setProjectSettings(base.replace(/\n/g,'\r\n'),DIALOGIC_SETTINGS);
+ assert.ok(hasProjectSetting(crlf,{section:'input',key:'dialogic_default_action'})&&hasProjectSetting(crlf,{section:'autoload',key:'Dialogic'}));
+});
+
 test('installAddons: 태그로 받아 addons/에 넣고 project.godot에 등록, 있는 것은 건너뜀',t=>{
  const dir=godotProject(t),cloned=[];
  const clone=(repo,tag,dest)=>{
@@ -144,7 +171,13 @@ test('installAddons: 태그로 받아 addons/에 넣고 project.godot에 등록,
  assert.ok(fs.existsSync(path.join(dir,'addons','gdUnit4','plugin.cfg')));
  const project=fs.readFileSync(path.join(dir,'project.godot'),'utf8');
  assert.match(project,/enabled=PackedStringArray\("res:\/\/addons\/gdUnit4\/plugin\.cfg", "res:\/\/addons\/dialogic\/plugin\.cfg"\)/);
+ assert.ok(hasProjectSetting(project,{section:'autoload',key:'Dialogic'})&&hasProjectSetting(project,{section:'input',key:'dialogic_default_action'}),'Dialogic의 _enable_plugin이 쓰는 설정을 대신 쓴다');
+ assert.deepEqual(checkAddonSettings(dir),[]);
  assert.deepEqual(installAddons(dir,{only:['gdunit4'],clone,log:()=>{}}),[],'이미 있으면 받지 않는다');
+ // 예전에 깐 저장소(애드온은 있고 설정은 없음)도 다시 돌리면 설정이 들어간다.
+ const dir2=godotProject(t,{addons:['dialogic']});
+ assert.deepEqual(installAddons(dir2,{only:['dialogic'],clone,log:()=>{}}),[]);
+ assert.deepEqual(checkAddonSettings(dir2),[]);
  assert.throws(()=>installAddons(dir,{only:['unity'],clone}),/알 수 없는 애드온/);
  assert.throws(()=>installAddons(dir,{only:['aseprite'],clone:(r,t,d)=>fs.mkdirSync(d,{recursive:true})}),/plugin\.cfg가 없음/);
  assert.throws(()=>installAddons(fs.mkdtempSync(path.join(os.tmpdir(),'x-')),{clone}),/project\.godot 없음/);

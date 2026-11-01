@@ -10,7 +10,7 @@ Godot 프로젝트는 게임 저장소 **루트**에 둡니다(`project.godot`�
 node <hf-game-studio>/scripts/setup.mjs <저장소> --godot
 ```
 
-애드온은 git 태그로 받아 `addons/`에 넣고 `project.godot`에 등록합니다(gdUnit4 v6.2.2, Dialogic 2.0-alpha-20, Aseprite Wizard v9.8.0-4). `addons/`는 커밋합니다.
+애드온은 git 태그로 받아 `addons/`에 넣고 `project.godot`에 등록합니다(gdUnit4 v6.2.2, Dialogic 2.0-alpha-20, Aseprite Wizard v9.8.0-4). `addons/`는 커밋합니다. Dialogic이 에디터에서 켤 때 써 넣는 설정(`autoload/Dialogic`, `input/dialogic_default_action`: Enter·마우스 왼쪽·Space·X·패드 A)도 같이 씁니다. 파일로만 등록하면 그 단계가 빠져 게임 실행 중 `InputMap action "dialogic_default_action" doesn't exist`가 매 입력마다 찍히고, 헤드리스 검사는 입력이 없어 이를 못 보므로 `godot-check.mjs run`이 설정 유무를 따로 봅니다. 예전에 깐 저장소는 같은 명령을 다시 돌리면 설정이 들어갑니다.
 
 ```bash
 node tools/hfgs/godot-addons.mjs .
