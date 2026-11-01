@@ -141,6 +141,7 @@ export function review({repo,base,reviewer='codex',author='claude',authorModel,c
 export const WRITE_SCHEMA={type:'object',properties:{content:{type:'string'},new_terms:{type:'array',items:{type:'object',properties:{term:{type:'string'},definition:{type:'string'}},required:['term','definition'],additionalProperties:false}},notes:{type:'string'}},required:['content','new_terms','notes'],additionalProperties:false};
 const WRITE_ORDERS=[
  'You are the writer for this game. Write the piece described in task, in the language given in language, with vivid, natural prose that fits the world and characters in the design docs.',
+ 'success_criteria are the acceptance criteria the lead will check your piece against (e.g. which choices or branches it must offer). Meet every one of them; if one cannot be met, say which and why in notes.',
  'Use only names, places and terms defined in the glossary and world docs. If the piece needs a new proper noun, use it and list it in new_terms with a one-line definition; never invent one silently.',
  'Put the complete text in content, ready to save as-is: no summary, no outline, no commentary around it. When format is json, content must be a JSON document as a string that follows the given structure.',
  'Use notes for anything the lead should know: assumptions, conflicts with the design docs, open questions. Write notes in Korean.',
@@ -151,6 +152,7 @@ export function checkWriteBrief(b){
  if(!b||typeof b!=='object')fail('write brief가 객체가 아님');
  if(!str(b.task))fail('write brief에 task 필요');
  if(b.format!==undefined&&!['markdown','json'].includes(b.format))fail('format은 markdown 또는 json');
+ if(b.success_criteria!==undefined&&(!Array.isArray(b.success_criteria)||!b.success_criteria.every(str)))fail('success_criteria는 문자열 배열');
  if(b.context_sections!==undefined&&(typeof b.context_sections!=='object'||Array.isArray(b.context_sections)))fail('context_sections는 {"문서 경로": ["섹션 제목", ...]} 형식');
 }
 
@@ -165,7 +167,8 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
   return ok;
  });
  const reading=docs.length?docDirectives(docs,picked,{repo,warn}):[];
- const prompt=JSON.stringify({task:'write',brief:{task:brief.task,kind:brief.kind??'prose',language:brief.language??'ko',format:brief.format??'markdown',
+ // 수용 기준을 작가에게도 보인다. 없으면 작가가 거절 분기 같은 필수 요소를 모르고 쓴다(마일스톤 1 실측).
+ const prompt=JSON.stringify({task:'write',brief:{task:brief.task,...(brief.success_criteria?.length?{success_criteria:brief.success_criteria}:{}),kind:brief.kind??'prose',language:brief.language??'ko',format:brief.format??'markdown',
   ...(brief.length?{length:brief.length}:{}),...(brief.style?{style:brief.style}:{}),...(brief.structure?{structure:brief.structure}:{})},
   design_docs:reading,result_schema:WRITE_SCHEMA,instructions:[...WRITE_ORDERS,...readOnlyOrders(adapter.reader)]});
  const options={...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{}),timeout_ms:30*60*1000};

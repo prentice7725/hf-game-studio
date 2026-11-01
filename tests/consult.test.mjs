@@ -88,9 +88,13 @@ test('write: 문서 읽기 지시와 언어를 넘기고, json 형식이면 cont
  const dir=repo(),seen={};
  const invoke=(adapter,{prompt,timeoutMs})=>{seen.adapter=adapter.name;seen.prompt=JSON.parse(prompt);seen.timeout=timeoutMs;return {result:{content:'그는 길드 문을 열었다.',new_terms:[{term:'잿빛 항구',definition:'북쪽 항구 도시'}],notes:''},redacted:0};};
  const warnings=[];
- const {report}=write({task:'용병 애쉬의 첫 등장 장면',context_docs:['design/glossary.md','design/none.md']},{repo:dir},{invoke,dir:tmp(),warn:m=>warnings.push(m)});
+ const criteria=['AC1: 파일이 스키마를 통과한다','AC2: 대사에 수락과 거절 선택지가 있다'];
+ const {report}=write({task:'용병 애쉬의 첫 등장 장면',success_criteria:criteria,context_docs:['design/glossary.md','design/none.md']},{repo:dir},{invoke,dir:tmp(),warn:m=>warnings.push(m)});
  assert.equal(seen.adapter,'agy');
  assert.equal(seen.prompt.brief.language,'ko');
+ // 수용 기준이 프롬프트에 들어가고 지시문이 그것을 지키라고 말한다(마일스톤 1에서 기준이 빠져 거절 분기 없는 대사가 나왔다).
+ assert.deepEqual(seen.prompt.brief.success_criteria,criteria);
+ assert.ok(seen.prompt.instructions.some(i=>/success_criteria/.test(i)&&/Meet every one/.test(i)));
  assert.ok(seen.prompt.design_docs.includes('Read in full: design/glossary.md.'));
  assert.ok(seen.timeout>=30*60*1000);
  assert.ok(warnings.some(w=>w.includes('design/none.md')));
@@ -98,12 +102,17 @@ test('write: 문서 읽기 지시와 언어를 넘기고, json 형식이면 cont
  assert.equal(report.new_terms[0].term,'잿빛 항구');
  const bad=()=>({result:{content:'not json',new_terms:[],notes:''}});
  assert.throws(()=>write({task:'대사',format:'json',context_docs:[]},{repo:dir},{invoke:bad,dir:tmp()}),/JSON이 아님/);
+ // 기준이 없는 brief(자유 글)는 success_criteria 키 없이 간다.
+ write({task:'로어 한 단락',context_docs:[]},{repo:dir},{invoke,dir:tmp()});
+ assert.equal('success_criteria' in seen.prompt.brief,false);
 });
 
 test('checkWriteBrief: task 필수, format과 context_sections 형식',()=>{
  assert.throws(()=>checkWriteBrief({}),/task/);
  assert.throws(()=>checkWriteBrief({task:'x',format:'yaml'}),/format/);
  assert.throws(()=>checkWriteBrief({task:'x',context_sections:['a']}),/context_sections/);
+ assert.throws(()=>checkWriteBrief({task:'x',success_criteria:'AC1: x'}),/success_criteria/);
+ assert.doesNotThrow(()=>checkWriteBrief({task:'x',success_criteria:['AC1: x']}));
  assert.doesNotThrow(()=>checkWriteBrief({task:'x',format:'json'}));
 });
 

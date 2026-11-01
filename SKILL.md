@@ -13,7 +13,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 1. `node $HFGS/scripts/setup.mjs $REPO`: 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)을 깐다. 있는 파일은 덮어쓰지 않는다. 웹 프로토타입 단계면 `--phaser`를 붙여 `prototype/`에 Phaser 4 템플릿을 깔고 그 안에서 `npm install`을 한다(스크린샷 검사용 Playwright는 저장소 루트에 `npm i -D playwright && npx playwright install chromium`). Godot 본편 단계면 `--godot`을 붙여 루트에 Godot 4.7 템플릿을 깔고, `node tools/hfgs/godot-addons.mjs .`로 애드온(gdUnit4, Dialogic 2, Aseprite Wizard)을 받고, `GODOT_BIN`을 Godot 4.7 실행 파일로 둔다.
 2. 사용자와 `design/glossary.md`, `design/world.md`, `design/gdd.md`, `design/art-bible.md`를 채운다. 모든 모델이 읽는 단일 원본이다. 비어 있으면 모델마다 세계관과 수치를 지어낸다. 결과물 형식은 `design/schemas/*.schema.json`과 `design/asset-manifest.json`에 먼저 적는다. 이 파일들이 수용 검사의 기준이 된다.
 3. 전문가가 준비됐는지 본다: `codex`(리뷰)·`agy`(Argon 글쓰기)가 설치·로그인되어 있는지, asset-pipeline MCP가 Claude Code에 등록되어 있는지(`asset_capabilities`로 확인).
-4. 마일스톤은 `$HFGS/examples/milestone-1.md`처럼 작게(용병 1명 + 계약 1개 + 화면 1개) 작업 목록으로 적고 사용자 승인을 받는다. 게이트는 이것 하나다.
+4. 마일스톤은 `$HFGS/examples/milestone-1.md`처럼 작게(용병 1명 + 계약 1개 + 대사 1개 + 화면 1개) 작업 목록으로 적고 사용자 승인을 받는다. 화면이 읽는 데이터 파일(예: `data/contracts.json`)마다 데이터 작업을 앞에 둔다. 게이트는 이것 하나다.
 
 ## 작업마다
 
@@ -21,7 +21,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 2. **시작.** `node $HFGS/scripts/task.mjs start TASK.json --repo $REPO`. 작업 파일을 검증하고, 읽을 문서·규칙·검사 명령을 보여 주고, **red-first**를 한다: 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 한다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절한다(그 검사는 맞는 결과와 엉터리 결과를 가르지 못한다). 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적고, 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적는다. 작업 전 트리 상태와 검사 기준 파일의 해시가 `~/.hf-game-studio/tasks/`에 기록된다.
 3. **구현.** 담당(`owner`)에 따라 다르다.
    - `claude`: 리드가 직접 구현한다. plan의 읽기 지시대로 문서 섹션만 읽고, 규칙을 따른다.
-   - 글(`writer: argon`): plan이 보여 주는 작가 brief를 파일로 저장해 `node $HFGS/scripts/consult.mjs write BRIEF.json --repo $REPO`로 Argon에게 맡긴다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 리드가 용어집·세계관과 맞는지 검수한 뒤 범위 안 파일로 쓴다. 새 용어는 사용자에게 물어 용어집에 넣을지 정한다(용어집은 검사 기준이라 이 작업 범위에서 고치지 않는다).
+   - 글(`writer: argon`): plan이 보여 주는 작가 brief(수용 기준 `success_criteria` 포함)를 파일로 저장해 `node $HFGS/scripts/consult.mjs write BRIEF.json --repo $REPO`로 Argon에게 맡긴다. 작가는 기준을 지키라는 지시를 받고, 못 지키면 메모에 적는다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 리드가 용어집·세계관과 맞는지 검수한 뒤 범위 안 파일로 쓴다. 새 용어는 사용자에게 물어 용어집에 넣을지 정한다(용어집은 검사 기준이라 이 작업 범위에서 고치지 않는다).
    - `asset-pipeline`: `node $HFGS/scripts/assets.mjs generate TASK.json --repo $REPO [--candidates N] [--seed S]`. 이 스크립트가 asset_pipeline MCP 서버를 직접 띄워 plan의 규칙대로 돈다(`asset_build_brief` → `asset_route` → `asset_generate` → `asset_inspect_run`, `STARTING`·`RUNNING`을 벗어날 때까지 기다리기, 실패하면 재시도 없이 멈춤). 프롬프트는 매니페스트 항목의 `prompt`에서 읽는다. 후보와 규격 검사 결과는 `~/.hf-game-studio/assets/<task_id>/`에, run_id·상태·검토 상태는 작업 노트 `<task_id>.json`에 남는다. 사용자가 후보를 보고(들고) 고르면 `assets.mjs pick TASK.json <번호> --approved --repo $REPO`로 매니페스트 경로에 옮긴다. `--approved`는 사용자의 승인을 뜻하므로 리드가 혼자 붙이지 않는다. 스크립트가 없는 환경에서만 리드가 MCP 도구를 같은 순서로 직접 부른다.
    - 작업 도중 검사만 돌려 보려면 `task.mjs check TASK.json --repo $REPO`.
 4. **검증.** `node $HFGS/scripts/task.mjs verify TASK.json --repo $REPO`. 수용 검사가 모두 통과하고, 변경이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있고, 검사 기준 파일(스키마·매니페스트·용어집·참조 이미지)이 바뀌지 않았으면 통과한다. 명령이 걸리지 않은 수용 기준은 "직접 확인"으로 표시되니 리드가 눈으로 보고 리뷰어에게도 맡긴다.

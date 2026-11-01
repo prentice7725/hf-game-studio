@@ -38,8 +38,12 @@ export function roleDirectives(role,root=STUDIO_ROOT){
  return fs.readFileSync(file,'utf8').split(/\r?\n/).filter(l=>l.startsWith('- ')).map(l=>l.slice(2).trim());
 }
 
-// 셸에서 한 단어로 읽히도록 감싼다. 공백·따옴표 없는 평범한 경로는 그대로 둔다.
-export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:JSON.stringify(s);
+// 셸에 붙여 넣는 명령의 인자. 그냥 써도 되는 글자만이면 그대로, 아니면 큰따옴표로만 감싼다.
+// JSON.stringify로 감싸면 Windows 경로의 역슬래시가 두 번 이스케이프돼(C:\\\\workspace) bash(git bash)에 붙여 넣으면 깨진다(마일스톤 1 실측).
+// 큰따옴표·역슬래시·$·백틱이 든 인자만 JSON 이스케이프로 물러난다(이 경우는 bash에서만 안전하다).
+export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:/["\\$`]/.test(s)?JSON.stringify(s):`"${s}"`;
+// 경로는 슬래시로 통일한다. Windows도 슬래시 경로를 받고, bash와 PowerShell 어디에 붙여 넣어도 그대로 돈다.
+export const slashPath=s=>s.replace(/\\/g,'/');
 
 function fail(m){throw Error(m);}
 const str=v=>typeof v==='string'&&v.trim().length>0;
@@ -258,10 +262,11 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  }
 
  // 글은 작가 모델(Gemini Argon)이 쓴다. consult.mjs write에 바로 넘길 수 있는 brief를 함께 만든다.
+ // 수용 기준도 넘긴다. 마일스톤 1 실측에서 brief에 기준이 없어 작가가 "accept and refuse choices"를 못 보고 거절 분기 없는 대사를 썼다.
  let write;
  if(kind.writer){
   const json=kind.verify==='dialogue';
-  write={task:input.objective,kind:input.kind,language:input.language??'ko',format:json?'json':'markdown',
+  write={task:input.objective,success_criteria:input.success_criteria,kind:input.kind,language:input.language??'ko',format:json?'json':'markdown',
    ...(json?{structure:`Follow the JSON schema at ${input.schema} exactly; characters must be glossary IDs.`}:{}),
    ...(role?{style:roleDirectives(role,root).join(' ')}:{}),
    context_docs:docs,...(Object.keys(picked).length?{context_sections:picked}:{})};
@@ -348,7 +353,7 @@ export function acTable(p,results){
 
 // 다른 계열 리뷰 명령. 리뷰어는 작성자의 주장 없이 diff와 이 검사 결과만 본다.
 export function reviewCommand(p,state,{repo,studio=STUDIO_ROOT}={}){
- const args=['node',path.join(studio,'scripts','consult.mjs'),'review','--repo',repo,'--base',state.head,
+ const args=['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--repo',slashPath(repo),'--base',state.head,
   ...p.success_criteria.flatMap(c=>['--criteria',c]),...p.acceptance_commands.flatMap(c=>['--check',c])];
  return args.map(quote).join(' ');
 }

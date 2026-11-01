@@ -40,7 +40,7 @@ src/scenes/*.ts            Phaser 장면. 그리기만 하고 규칙은 rules/�
 | `npm run build` | `dist/`에 빌드(data/도 복사됨) |
 | `npm run shot` | 서버를 띄워 `#hud`에 `ready`가 보이는지 확인하고 스크린샷 |
 
-작업 파일(web-prototype)에서는 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<계약 제목>"}`처럼 적고, 규칙 테스트는 `acceptance_commands`에 `npm --prefix prototype test`를 넣습니다.
+작업 파일(web-prototype)에서는 `screenshot: {"serve": "npm --prefix prototype run dev", "url": "http://localhost:5173", "selector": "#hud", "expect_text": "<작업이 새로 그리는 글자>"}`처럼 적고, 규칙 테스트는 `acceptance_commands`에 `npm --prefix prototype test`를 넣습니다. 이 템플릿은 계약 목록과 성공 확률을 이미 그리므로 `expect_text`에 계약 제목을 적으면 red-first가 처음부터 통과합니다. 첫 화면 작업은 템플릿에 없는 것, 예를 들어 GDD "계약 해결"(받기 버튼 → `rules/contract.ts`의 `resolveContract` 판정 → `rules/guild.ts` 장부에 보수 반영 → `#hud`에 결과와 금화 표시)을 시키고 `expect_text`는 `금화`로 둡니다(`examples/tasks/contract-board-ui.json`). `guild.ts`는 템플릿에 없습니다. 작업이 만듭니다.
 
 ## 규칙
 

@@ -175,6 +175,8 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 9. ✅ (5~8보다 앞당겨 진행) **hyperfusion 의존 제거:** `brief.mjs`(hyperfusion brief 변환)를 `task.mjs`(plan·start·check·verify)로 바꾸고, `game-kinds.json`에서 task_kind 매핑을 걷어 내 종류를 직접 정의하고, setup의 hyperfusion 프리셋과 CI의 hyperfusion 체크아웃을 지웠다. red-first와 검사 기준 파일 불변 규칙은 `task.mjs`에 남겼다. 두 경로를 함께 유지하는 기간이 길수록 문서·테스트 중복이 늘어 앞당겼다. `brief.mjs`의 hyperfusion brief 변환, `game-kinds.json`의 task_kind 매핑, setup의 hyperfusion 설정을 걷어 낸다. 작업 종류는 hf-game-studio가 직접 정의한다.
 10. ✅ (asset-pipeline [PR 43](https://github.com/prentice7725/asset-pipeline/pull/43), 2026-11-01 열림) **asset-pipeline 개선 요청:** brief의 `constraints.resolution`·`transparency`만으로 리사이즈·배경 제거(rembg)가 돌고 `constraints.max_file_kb`로 용량을 검사한다(프로젝트 SOT가 있으면 SOT가 우선). PIXEL_STATIC은 Pixel Gate 앞에 32색 양자화. idle·attack은 조사 메모만. hf-game-studio 쪽은 `assets.mjs`의 `prepareBrief`가 매니페스트의 `width/height/alpha/max_kb`를 그 constraints로 넘긴다. 사람 검토 게이트는 그대로다.
 
+11. ✅ **마일스톤 1 실측 보정(2026-11-01):** `C:\workspace\merc-guild`에서 `examples/milestone-1.md`를 한 바퀴 돌리고 나온 마찰 4건. (1) 작가 brief에 `success_criteria`가 없어 Argon이 거절 분기 없는 대사를 썼다 → brief와 `consult.mjs write` 프롬프트에 수용 기준을 넣고 지키라는 지시를 붙였다. (2) `task.mjs verify`의 리뷰 명령이 Windows 경로를 `"C:\\workspace\\..."`로 이중 이스케이프해 git bash에 붙여 넣으면 깨졌다 → 경로는 슬래시로, 인자는 큰따옴표로만 감싼다(bash·PowerShell 공통). (3) 화면이 읽는 `data/contracts.json`을 만드는 작업이 없었다 → `examples/tasks/contract-data.json`을 표 2번에 넣었다. (4) `contract-board-ui.json`이 템플릿이 이미 하는 일(목록·확률)을 시켜 red-first가 처음부터 통과했다 → 목표를 GDD "계약 해결"(받기 → `resolveContract` → `guild.ts` 장부 → 금화 표시)로 바꿨다. 템플릿에는 그 기능을 넣지 않는다(작업이 할 일).
+
 ## 남은 확인 거리
 
 - Phaser 쪽 에이전트 도구(Phaser Agent MCP)가 프로토타입에 쓸 만한지. 공식 사이트에 있다는 것만 확인했다. 템플릿은 공식 생성기(`npm create @phaserjs/game`) 대신 직접 짠 최소 구성이다(생성기 결과물이 Vite 8·TS 설정과 맞는지 확인하지 않았다).
