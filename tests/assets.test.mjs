@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {serverCommand,McpClient,generate,pick,target,briefArgs,prepareBrief,pickOutput,noteFile,PENDING} from '../scripts/assets.mjs';
+import {serverCommand,McpClient,generate,resume,pick,target,briefArgs,prepareBrief,pickOutput,noteFile,PENDING} from '../scripts/assets.mjs';
 import {STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
@@ -241,6 +241,20 @@ test('generate: inspect가 서버 예외로 실패하면 크래시 대신 ERROR�
  assert.ok(note.candidates[0].run_id);
  assert.match(note.candidates[0].error,/asset_inspect_run 실패: .*outside configured roots.*run_id/);
  assert.equal(calls().filter(c=>c.name==='asset_generate').length,1);
+ // 서버가 고쳐지면 resume이 같은 run을 다시 읽어 후보를 완성한다. 새 생성은 없다.
+ const fixed=fake(t);
+ fs.copyFileSync(path.join(fake(t).dir,'sample.png'),path.join(fixed.dir,'sample.png'));
+ // 가짜 서버는 run을 메모리에 두므로, 같은 run_id를 아는 서버에서 다시 읽는 상황을 흉내 내려면 그 run을 먼저 만들어 둔다.
+ await withClient(fixed.server,async client=>{
+  await client.call('asset_generate',{brief:{},seed:1});
+  const r=await resume(task,{repo:dir,client,env,...quick});
+  assert.equal(r.note.candidates[0].status,'REVIEW_REQUIRED');
+  assert.ok(fs.existsSync(r.note.candidates[0].candidate));
+  assert.deepEqual(r.note.candidates[0].spec_errors,[]);
+  assert.ok(r.note.candidates[0].resumed_at);
+  await assert.rejects(resume(task,{repo:dir,client,env,...quick}),/다시 읽을 후보가 없음/);
+ });
+ assert.equal(fixed.calls().filter(c=>c.name==='asset_generate').length,1,'resume은 생성하지 않는다');
 });
 
 test('generate: 시간 안에 끝나지 않으면 TIMEOUT으로 적고 멈춘다',async t=>{

@@ -7,9 +7,11 @@
 //
 //   generate TASK.json   후보를 만든다. 결과는 HFGS_HOME/assets/<task_id>/에 모이고 게임 저장소에는 쓰지 않는다.
 //   pick     TASK.json N 사용자가 보고 들어 고른 후보 N을 매니페스트 경로로 복사한다(--approved 필수).
+//   resume   TASK.json   결과를 못 읽은 후보(ERROR·TIMEOUT·RUNNING)를 다시 inspect한다. 새로 만들지 않는다.
 //   status   TASK.json   run_id·상태·검토 상태가 적힌 작업 노트를 보여 준다.
 // 사용법:
 //   node scripts/assets.mjs generate TASK.json [--repo DIR] [--candidates N] [--seed S] [--interval SEC] [--timeout MIN] [--json]
+//   node scripts/assets.mjs resume TASK.json [--repo DIR] [--interval SEC] [--timeout MIN] [--json]
 //   node scripts/assets.mjs pick TASK.json <N> --approved [--from FILE] [--repo DIR]
 //   node scripts/assets.mjs status TASK.json
 // MCP 서버는 HFGS_ASSET_MCP(JSON {"command":..,"args":[..],"env":{..}})가 있으면 그것을, 없으면 ~/.claude.json의
@@ -205,28 +207,60 @@ export async function generate(task,{repo=process.cwd(),client,candidates=1,seed
    break;
   }
   log(`후보 ${n}: run ${g.run_id} 시작${runSeed===null?'':` (seed ${runSeed})`}`);
-  const deadline=Date.now()+timeoutMs;
-  let r;
-  for(;;){
-   // inspect 자체가 실패하면(서버 쪽 예외) run은 살아 있을 수 있다. 크래시하지 않고 ERROR로 적고 멈춘다.
-   try{r=await client.call('asset_inspect_run',{run_id:g.run_id});}
-   catch(e){r={status:'ERROR',error:`asset_inspect_run 실패: ${e.message}. run은 asset-pipeline에 남아 있다(run_id ${g.run_id})`};break;}
-   if(!PENDING.includes(r.status))break;
-   if(Date.now()>=deadline){r={...r,status:'TIMEOUT',error:`${Math.round(timeoutMs/60000)}분 안에 끝나지 않음. asset-pipeline 쪽에서는 계속 돌 수 있다`};break;}
-   await sleep(intervalMs);
-  }
-  Object.assign(cand,{status:r.status,engine_status:r.engine_status??null,review_items:r.review_items??[],qa:r.qa??[],error:r.error??null,manifest:r.manifest??null,game_ready:r.game_ready??false,finished_at:new Date().toISOString()});
-  const out=pickOutput(r.outputs,t.ext);
-  if(out&&fs.existsSync(out)){
-   const copy=path.join(dir,`${String(n).padStart(2,'0')}-${g.run_id}${t.ext}`);
-   fs.copyFileSync(out,copy);
-   cand.output=out;cand.candidate=copy;
-   cand.spec_errors=checkAsset({...t.spec,file:copy});
-  }else if(!['FAILED','TIMEOUT','ERROR'].includes(r.status))cand.error=cand.error??`outputs에 ${t.ext} 파일이 없음`;
+  const r=await inspectUntilDone(client,g.run_id,{intervalMs,timeoutMs,sleep});
+  settleCandidate(cand,r,{t,dir});
   save();
-  log(`후보 ${n}: ${cand.status}${cand.engine_status?` (${cand.engine_status})`:''}${cand.candidate?` → ${cand.candidate}`:''}${cand.spec_errors?.length?` 규격 불일치: ${cand.spec_errors.join('; ')}`:cand.spec_errors?' 규격 OK':''}${cand.error?` 오류: ${cand.error}`:''}`);
+  log(describe(cand));
   // 실패하면 재시도 없이 멈추고 사용자와 상의한다(SKILL 규칙).
-  if(['FAILED','TIMEOUT','ERROR'].includes(r.status))break;
+  if(STOPPED.includes(r.status))break;
+ }
+ return {note,file:save(),dir};
+}
+
+const STOPPED=['FAILED','TIMEOUT','ERROR'];
+// 상태가 STARTING·RUNNING을 벗어날 때까지 inspect한다. inspect 자체가 실패하면(서버 쪽 예외) run은 살아 있을 수 있으므로
+// 크래시하지 않고 ERROR로 돌려준다(나중에 resume으로 다시 읽는다).
+async function inspectUntilDone(client,runId,{intervalMs,timeoutMs,sleep}){
+ const deadline=Date.now()+timeoutMs;
+ for(;;){
+  let r;
+  try{r=await client.call('asset_inspect_run',{run_id:runId});}
+  catch(e){return {status:'ERROR',error:`asset_inspect_run 실패: ${e.message}. run은 asset-pipeline에 남아 있다(run_id ${runId}). 고친 뒤 assets.mjs resume으로 다시 읽을 것`};}
+  if(!PENDING.includes(r.status))return r;
+  if(Date.now()>=deadline)return {...r,status:'TIMEOUT',error:`${Math.round(timeoutMs/60000)}분 안에 끝나지 않음. asset-pipeline 쪽에서는 계속 돌 수 있다(resume으로 다시 읽을 것)`};
+  await sleep(intervalMs);
+ }
+}
+// inspect 결과를 후보에 적고, 매니페스트 형식의 출력이 있으면 후보 폴더로 복사해 규격을 검사한다.
+function settleCandidate(cand,r,{t,dir}){
+ Object.assign(cand,{status:r.status,engine_status:r.engine_status??null,review_items:r.review_items??[],qa:r.qa??[],error:r.error??null,manifest:r.manifest??null,game_ready:r.game_ready??false,finished_at:new Date().toISOString()});
+ const out=pickOutput(r.outputs,t.ext);
+ if(out&&fs.existsSync(out)){
+  const copy=path.join(dir,`${String(cand.n).padStart(2,'0')}-${cand.run_id}${t.ext}`);
+  fs.copyFileSync(out,copy);
+  cand.output=out;cand.candidate=copy;
+  cand.spec_errors=checkAsset({...t.spec,file:copy});
+ }else if(!STOPPED.includes(r.status))cand.error=cand.error??`outputs에 ${t.ext} 파일이 없음`;
+ return cand;
+}
+const describe=cand=>`후보 ${cand.n}: ${cand.status}${cand.engine_status?` (${cand.engine_status})`:''}${cand.candidate?` → ${cand.candidate}`:''}${cand.spec_errors?.length?` 규격 불일치: ${cand.spec_errors.join('; ')}`:cand.spec_errors?' 규격 OK':''}${cand.error?` 오류: ${cand.error}`:''}`;
+
+// 결과를 못 읽은 후보(ERROR·TIMEOUT·아직 RUNNING)를 다시 inspect한다. 새로 생성하지 않는다.
+export async function resume(task,{repo=process.cwd(),client,intervalMs=5000,timeoutMs=30*60*1000,env=process.env,log=()=>{},sleep=sleepMs}={}){
+ const t=target(task,{repo});
+ const note=readNote(task.task_id,env);
+ const dir=candidateDir(task.task_id,env);
+ fs.mkdirSync(dir,{recursive:true});
+ const todo=note.candidates.filter(c=>c.run_id&&!c.candidate&&[...PENDING,...STOPPED.filter(s=>s!=='FAILED')].includes(c.status));
+ if(!todo.length)fail('다시 읽을 후보가 없음: run_id가 있고 결과 파일이 없는 ERROR·TIMEOUT·RUNNING 후보만 다시 읽는다');
+ const save=()=>writeNote(note,env);
+ for(const cand of todo){
+  log(`후보 ${cand.n}: run ${cand.run_id} 다시 읽음`);
+  const r=await inspectUntilDone(client,cand.run_id,{intervalMs,timeoutMs,sleep});
+  settleCandidate(cand,r,{t,dir});
+  cand.resumed_at=new Date().toISOString();
+  save();
+  log(describe(cand));
  }
  return {note,file:save(),dir};
 }
@@ -268,7 +302,7 @@ const int=(v,name)=>{const n=Number(v);if(!Number.isInteger(n))fail(`${name}는 
 
 async function main(argv){
  const {command,taskFile,opts}=parseArgs(argv);
- if(!['generate','pick','status'].includes(command)||!taskFile)fail('사용법: assets.mjs <generate|pick|status> TASK.json [...]');
+ if(!['generate','resume','pick','status'].includes(command)||!taskFile)fail('사용법: assets.mjs <generate|resume|pick|status> TASK.json [...]');
  const task=JSON.parse(fs.readFileSync(taskFile,'utf8'));
  const repo=path.resolve(opts.repo??process.cwd());
  if(command==='status'){
@@ -286,12 +320,11 @@ async function main(argv){
  const client=new McpClient(serverCommand());
  await client.start();
  try{
-  const {note,file}=await generate(task,{repo,client,
+  const common={repo,client,intervalMs:opts.interval===undefined?5000:Number(opts.interval)*1000,
+   timeoutMs:opts.timeout===undefined?30*60*1000:Number(opts.timeout)*60*1000,log:m=>console.error(m)};
+  const {note,file}=command==='resume'?await resume(task,common):await generate(task,{...common,
    candidates:opts.candidates===undefined?1:int(opts.candidates,'--candidates'),
-   seed:opts.seed===undefined?undefined:int(opts.seed,'--seed'),
-   intervalMs:opts.interval===undefined?5000:Number(opts.interval)*1000,
-   timeoutMs:opts.timeout===undefined?30*60*1000:Number(opts.timeout)*60*1000,
-   log:m=>console.error(m)});
+   seed:opts.seed===undefined?undefined:int(opts.seed,'--seed')});
   if(opts.json)console.log(JSON.stringify(note,null,1));
   else{
    for(const c of note.candidates)console.log(`${c.n}\t${c.run_id??'-'}\t${c.status}${c.engine_status?`(${c.engine_status})`:''}\t${c.spec_errors===null?'-':c.spec_errors.length?'규격 불일치':'규격 OK'}\t${c.candidate??c.error??''}`);

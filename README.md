@@ -144,7 +144,7 @@ Claude는 그림을 그리거나 소리를 합성할 수 없으므로 `scripts/a
 node ~/.claude/skills/hf-game-studio/scripts/assets.mjs generate tasks/merc-portrait-pipeline.json --repo . --candidates 3 --seed 7
 ```
 
-후보는 `~/.hf-game-studio/assets/<task_id>/`에 모이고(게임 저장소에는 쓰지 않음) 각각 매니페스트 규격 검사 결과가 붙는다. run_id·상태·검토 상태는 같은 곳의 `<task_id>.json`(작업 노트)에 남는다. 실패하면 재시도 없이 멈춘다(사용자와 상의). 사용자가 보고(들고) 고르면 그 번호를 매니페스트 경로로 옮긴다:
+후보는 `~/.hf-game-studio/assets/<task_id>/`에 모이고(게임 저장소에는 쓰지 않음) 각각 매니페스트 규격 검사 결과가 붙는다. run_id·상태·검토 상태는 같은 곳의 `<task_id>.json`(작업 노트)에 남는다. 실패하면 재시도 없이 멈춘다(사용자와 상의). inspect가 서버 예외나 시간 초과로 끝난 후보는 `assets.mjs resume TASK.json`이 새 생성 없이 같은 run을 다시 읽는다. 사용자가 보고(들고) 고르면 그 번호를 매니페스트 경로로 옮긴다:
 
 ```bash
 node ~/.claude/skills/hf-game-studio/scripts/assets.mjs pick tasks/merc-portrait-pipeline.json 2 --approved --repo .
