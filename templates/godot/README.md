@@ -48,4 +48,4 @@ node tools/hfgs/godot-check.mjs all        # syntax + test + run
 - 규칙 로직은 `scripts/rules/`의 static 함수에 두고 gdUnit4로 테스트합니다. 장면은 그리기와 입력만 합니다.
 - 수치·문구·대사는 `data/`에서 읽습니다. 프로토타입과 Godot의 공식이 어긋나면 두 테스트 중 하나가 깨집니다.
 - 애셋은 사람이 승인한 뒤에만 장면에 넣습니다. 스프라이트 애니메이션은 Aseprite Wizard의 자동 가져오기를 씁니다.
-- Godot MCP(에디터 제어)는 설계 문서 8단계에서 평가합니다. 그전까지 에디터 작업은 사람이 합니다.
+- 에디터 조작과 플레이테스트는 godot-ai MCP(4.3.1)로 합니다. 붙이는 법은 hf-game-studio의 `SKILL.md` "Godot 에디터 조작과 플레이테스트" 항목에 있습니다. Dialogic 캐릭터(`.dch`)는 사람이 만듭니다.

@@ -156,6 +156,29 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 - `PIXEL_STATIC`은 색을 자동으로 줄이지 않아, 생성물이 Pixel Gate(32색)에서 FAILED가 된다(실측 17,951색).
 - `PIXEL_ANIMATION`은 검토된 걷기 동작만 지원한다. idle과 attack은 아직 없다.
 
+## 효과(VFX): 별도 프로젝트로 (결정, 2026-11-03)
+
+asset-pipeline은 정지 이미지와 효과음만 만든다. 프레임이 이어지는 효과(휘두르기 궤적, 금화 수집, 폭발)는 코드로 만드는 편이 맞다. 같은 시드와 옵션이면 같은 프레임이 나오므로 검사와 재현이 된다.
+
+**결정: VFX는 hf-game-studio에 넣지 않고 별도 프로젝트로 뺀다.** 자체 도구 effect_studio를 바탕으로 입맛에 맞게 다시 만들고, 그 프로젝트가 자리 잡은 뒤에 hf-game-studio와 연동할지 합칠지 정한다. 그 전까지 hf-game-studio에는 `vfx` 작업 종류가 없다.
+
+검토한 생성기 둘(2026-11-03, 코드만 읽음):
+
+| | effect_studio | pixelfx |
+|---|---|---|
+| 출처 | `D:\workspace\effect_studio`(자체, Python: numpy·Pillow, GUI는 PySide6) | [patch-gg/pixelfx](https://github.com/patch-gg/pixelfx)(MIT, Node만, 검토한 커밋 `a841596`) |
+| 잘하는 것 | 무기 휘두르기 궤적 하나를 속성 12종(불·얼음·번개·독·바람·공허·피·신성·사이버·대지·사령·우주)으로 깊게 | 효과 244종을 넓게(불·폭발·마법·UI·줍기·전환 등) |
+| 그림체 | 256px, 외곽선 있는 부드러운 그림 | 저해상도 픽셀(예: 176×116)을 확대 |
+| 후광 | 본체 시트와 후광 시트를 따로 굽는다 | 코드에는 color·light 버퍼가 따로 있지만 시트에는 알파로 섞어 굽는다 |
+| 엔진 연결 | GameMaker 설치 도구(쓰지 않음) | Aseprite식 JSON(`meta.pixelfx`: fps, loop, 프레임 크기, 열 수, 기준점) |
+
+별도 프로젝트로 넘길 메모:
+
+- effect_studio는 지금 git 저장소가 아니다. GUI 없이 굽는 명령이 없지만 굽기 함수(`effect_baker.bake_full_element`)는 GUI와 떨어져 있다. 구울 때마다 `VERSION` 번호를 올려 출력 이름에 붙이므로 같은 입력이 같은 파일 이름을 내지 않는다. GameMaker 설치 도구와 셰이더 비교 스크립트에는 다른 PC 경로(`C:/Users/hanya/...`)가 박혀 있다.
+- pixelfx는 생긴 지 며칠 된 저장소이고 릴리스가 없다. 쓴다면 커밋을 고정한다. 효과마다 `palette` 옵션이 있어 아트 바이블 색으로 바꿀 수 있다. 캐릭터 연기(`act`, 회색 더미)는 우리 그림과 맞지 않는다. 렌더는 자동 모드가 외부 코드 실행을 막아 확인하지 못했다.
+
+나중에 연동할 때 hf-game-studio 쪽 접점은 기존 애셋 규칙을 그대로 쓴다: 결과물은 시트 PNG(+ 선택적 후광 PNG)와 프레임·fps·기준점·생성 입력(생성기, 버전, 시드, 옵션)을 적은 JSON, 매니페스트 규격 검사, 사람 승인 뒤에만 게임 저장소에 넣기. Godot 쪽은 Aseprite Wizard가 `.aseprite` 파일용이라 JSON 시트에는 작은 로더가 필요할 것으로 본다(확인 전).
+
 ## 게임 작업 종류(자체 등록)
 
 `game-kinds.json`이 직접 정의한다(9단계에서 반영). 작업 흐름은 `task.mjs start → 구현 → verify → consult review`다.
@@ -170,6 +193,7 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 | web-prototype | Claude (Phaser 4) | Playwright 스크린샷(+ `acceptance_commands`의 Vitest) | 있음(템플릿 `templates/phaser/`) |
 | code | Claude | `acceptance_commands`의 테스트 | 있음 |
 | sprite, sprite-animation | asset-pipeline + Aseprite | Pixel Gate + 사람 승인 | 5·10단계 뒤 |
+| vfx | 별도 프로젝트 | 연동할 때 정함 | 없음(별도 프로젝트로 분리) |
 | godot-scene, godot-code | Claude (+ godot-ai MCP로 실행·입력·스크린샷) | `godot-check.mjs all`(문법 + gdUnit4 + 헤드리스 부팅) + `shot` 프레임 | 있음(템플릿 `templates/godot/`) |
 | review | 다른 계열 모델 | 지적 목록 | 있음(`consult.mjs review`, 작업 종류가 아니라 모든 작업의 마지막 단계) |
 
@@ -195,6 +219,8 @@ asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽�
 10. ✅ (asset-pipeline [PR 43](https://github.com/prentice7725/asset-pipeline/pull/43), 2026-11-01 열림) **asset-pipeline 개선 요청:** brief의 `constraints.resolution`·`transparency`만으로 리사이즈·배경 제거(rembg)가 돌고 `constraints.max_file_kb`로 용량을 검사한다(프로젝트 SOT가 있으면 SOT가 우선). PIXEL_STATIC은 Pixel Gate 앞에 32색 양자화. idle·attack은 조사 메모만. hf-game-studio 쪽은 `assets.mjs`의 `prepareBrief`가 매니페스트의 `width/height/alpha/max_kb`를 그 constraints로 넘긴다. 사람 검토 게이트는 그대로다.
 
 11. ✅ **마일스톤 1 실측 보정(2026-11-01):** `C:\workspace\merc-guild`에서 `examples/milestone-1.md`를 한 바퀴 돌리고 나온 마찰 4건. (1) 작가 brief에 `success_criteria`가 없어 Argon이 거절 분기 없는 대사를 썼다 → brief와 `consult.mjs write` 프롬프트에 수용 기준을 넣고 지키라는 지시를 붙였다. (2) `task.mjs verify`의 리뷰 명령이 Windows 경로를 `"C:\\workspace\\..."`로 이중 이스케이프해 git bash에 붙여 넣으면 깨졌다 → 경로는 슬래시로, 인자는 큰따옴표로만 감싼다(bash·PowerShell 공통). (3) 화면이 읽는 `data/contracts.json`을 만드는 작업이 없었다 → `examples/tasks/contract-data.json`을 표 2번에 넣었다. (4) `contract-board-ui.json`이 템플릿이 이미 하는 일(목록·확률)을 시켜 red-first가 처음부터 통과했다 → 목표를 GDD "계약 해결"(받기 → `resolveContract` → `guild.ts` 장부 → 금화 표시)로 바꿨다. 템플릿에는 그 기능을 넣지 않는다(작업이 할 일).
+
+12. **효과(VFX):** 별도 프로젝트로 분리하기로 했다(위 "효과(VFX)" 절). hf-game-studio에서 할 일은 그 프로젝트가 자리 잡은 뒤 연동이나 합체를 정하는 것뿐이다.
 
 ## 남은 확인 거리
 
