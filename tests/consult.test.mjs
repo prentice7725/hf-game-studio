@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {review,write,dispose,stats,judge,familyOf,reviewPrompt,runChecks,checkWriteBrief} from '../scripts/consult.mjs';
+import {review,write,dispose,stats,judge,familyOf,reviewPrompt,runChecks,checkWriteBrief,retrying} from '../scripts/consult.mjs';
 
 function repo(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-consult-'));
@@ -51,6 +51,16 @@ test('review: 전문가가 저장소를 바꾸면 답을 버린다',()=>{
  const dir=repo();
  const invoke=()=>{fs.writeFileSync(path.join(dir,'a.js'),'hacked\n');return {result:ok};};
  assert.throws(()=>review({repo:dir,base:'HEAD',criteria:['AC1: x']},{invoke,dir:tmp()}),/저장소가 바뀜/);
+});
+
+test('retrying: 용량 초과는 한 번만 다시 부르고, 다른 오류는 그대로 던진다',()=>{
+ const logs=[],flaky=fails=>{let n=0;return ()=>{if(n++<fails)throw Error('codex: Selected model is at capacity');return 'ok';};};
+ assert.equal(retrying(flaky(1),{log:m=>logs.push(m)}),'ok');
+ assert.match(logs[0],/한 번 다시 부름/);
+ assert.throws(()=>retrying(flaky(2),{log:()=>{}}),/다시 불러도 일시 오류.*--reviewer agy/);
+ let calls=0;
+ assert.throws(()=>retrying(()=>{calls++;throw Error('결과 JSON 형식이 깨짐');},{log:()=>{}}),/형식이 깨짐/);
+ assert.equal(calls,1);
 });
 
 test('judge: 줄 번호 있는 blocker·major가 없는 redo는 권고',()=>{

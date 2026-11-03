@@ -156,7 +156,9 @@ export function autoAcceptance(input,kind){
   const files=jsonFiles(input);
   if(!files.length)fail('대사 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
   if(input.expect!==undefined)fail('expect는 schema 검사 작업(balance-data 등)에만 쓸 수 있음: 대사는 dialogue-to-dtl.mjs --check로 검사한다');
-  out.push(['node',`${TOOLS_DIR}/dialogue-to-dtl.mjs`,...files,'--schema',input.schema,...(input.glossary?['--glossary',input.glossary]:[]),'--check'].map(quote).join(' '));
+  // dtl_dir가 있으면 그 폴더의 .dtl이 지금 JSON의 변환 결과와 같은지도 본다(변환만 하는 작업의 수용 검사, 낡은 .dtl 잡기).
+  if(input.dtl_dir!==undefined&&!str(input.dtl_dir))fail('dtl_dir는 .dtl이 있는 폴더(예: "dialogue")');
+  out.push(['node',`${TOOLS_DIR}/dialogue-to-dtl.mjs`,...files,'--schema',input.schema,...(input.glossary?['--glossary',input.glossary]:[]),'--check',...(input.dtl_dir?['--out-dir',input.dtl_dir,'--compare']:[])].map(quote).join(' '));
  }
  if(kind.verify==='assets'&&input.assets_manifest){
   const files=assetFiles(input);
@@ -206,6 +208,9 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  const noId=input.success_criteria.find(c=>!/^AC\d+:/.test(c));
  if(noId)fail(`수용 기준은 "AC1: ..."처럼 ID로 시작해야 함: ${noId}`);
  for(const k of kind.require??[])if(!str(input[k]))fail(`${input.kind} 작업에는 ${k}가 필요함`);
+ // 글을 새로 쓰지 않는 작업(이미 있는 대사를 변환만 하는 등)은 writer: "none"으로 작가 brief를 뺀다.
+ if(input.writer!==undefined&&input.writer!=='none')fail('작업 파일의 writer는 "none"만 쓸 수 있음(작가를 부르지 않는 글 작업)');
+ const writer=input.writer==='none'?null:kind.writer;
  let pipeline=[];
  if(input.asset_pipeline!==undefined){
   if(!kind.pipeline){
@@ -264,14 +269,14 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  // 글은 작가 모델(Gemini Argon)이 쓴다. consult.mjs write에 바로 넘길 수 있는 brief를 함께 만든다.
  // 수용 기준도 넘긴다. 마일스톤 1 실측에서 brief에 기준이 없어 작가가 "accept and refuse choices"를 못 보고 거절 분기 없는 대사를 썼다.
  let write;
- if(kind.writer){
+ if(writer){
   const json=kind.verify==='dialogue';
   write={task:input.objective,success_criteria:input.success_criteria,kind:input.kind,language:input.language??'ko',format:json?'json':'markdown',
    ...(json?{structure:`Follow the JSON schema at ${input.schema} exactly; characters must be glossary IDs.`}:{}),
    ...(role?{style:roleDirectives(role,root).join(' ')}:{}),
    context_docs:docs,...(Object.keys(picked).length?{context_sections:picked}:{})};
  }
- return {task_id:input.task_id,kind:input.kind,owner:kind.owner??'claude',...(kind.writer?{writer:kind.writer}:{}),objective:input.objective,
+ return {task_id:input.task_id,kind:input.kind,owner:kind.owner??'claude',...(writer?{writer}:{}),objective:input.objective,
   scope:input.scope.paths,allow_out_of_scope:input.allow_out_of_scope??[],success_criteria:input.success_criteria,criteria_files:criteria,
   reading,rules,acceptance_commands:commands,...(map?{acceptance_map:map}:{}),...(write?{write_brief:write}:{})};
 }
@@ -292,6 +297,10 @@ export function dirtyPaths(repo,{git=gitOut}={}){
   if(/^[RC]/.test(entry))i++;
  }
  return out;
+}
+// Godot이 파일 곁에 만드는 .uid(스크립트·대사·리소스)와 .import(애셋)는 원래 파일이 범위 안이면 같이 범위로 본다.
+export function inScope(file,allowed){
+ return allowed.includes(file)||(/\.(uid|import)$/.test(file)&&allowed.includes(file.replace(/\.(uid|import)$/,'')));
 }
 export function hashFiles(repo,paths){
  return Object.fromEntries(paths.map(p=>{
@@ -321,7 +330,11 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  if(old&&!old.verify?.ok&&!restart)fail(`이미 시작한 작업: ${stateFile(p.task_id,env)}. 이어서 하려면 check·verify를, 처음부터 다시 하려면 --restart`);
  if(old?.verify?.ok&&!restart)fail(`이미 끝난 작업(verify 통과): ${stateFile(p.task_id,env)}. 다시 열려면 --restart`);
  const dirty=dirtyPaths(repo,{git});
- if(dirty.length)warn(`작업 전에 바뀐 파일 ${dirty.length}개가 있음(내용을 기록해 두고 verify에서 더 바뀌었는지만 봄): ${dirty.slice(0,5).join(', ')}${dirty.length>5?' ...':''}`);
+ const list=xs=>`${xs.slice(0,5).join(', ')}${xs.length>5?' ...':''}`;
+ // 리뷰는 시작 커밋과 diff를 보므로, 범위 밖의 커밋 안 된 변경(준비 단계 애드온 등)이 리뷰 대상에 섞인다.
+ const foreign=dirty.filter(f=>!inScope(f,[...p.scope,...p.allow_out_of_scope]));
+ if(foreign.length)warn(`범위 밖의 커밋 안 된 변경 ${foreign.length}개가 있음: 리뷰 diff에 섞이니 이 작업과 무관하면 먼저 커밋할 것 (${list(foreign)})`);
+ else if(dirty.length)warn(`작업 전에 바뀐 파일 ${dirty.length}개가 있음(내용을 기록해 두고 verify에서 더 바뀌었는지만 봄): ${list(dirty)}`);
  const baseline=checks(repo,p.acceptance_commands);
  const red=baseline.filter(r=>!passed(r)).map(r=>r.command);
  if(p.acceptance_commands.length&&!red.length){
@@ -374,7 +387,7 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
  const now=dirtyPaths(repo,{git}),nowHash=hashFiles(repo,now);
  const changed=now.filter(f=>!(f in state.dirty_before)||state.dirty_before[f]!==nowHash[f]);
  const allowed=[...p.scope,...p.allow_out_of_scope];
- const outOfScope=changed.filter(f=>!allowed.includes(f));
+ const outOfScope=changed.filter(f=>!inScope(f,allowed));
  if(outOfScope.length)errors.push(`범위 밖 변경: ${outOfScope.join(', ')} (scope.paths에 넣을 것이면 작업 파일을 고치고, 아니면 되돌릴 것)`);
  const ac=acTable(p,results);
  const ok=!failed.length&&!errors.length;

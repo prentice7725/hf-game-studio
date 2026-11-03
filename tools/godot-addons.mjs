@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Godot 애드온을 고정된 git 태그로 받아 addons/에 넣고 project.godot의 [editor_plugins]에 등록한다.
-// 사용법: node tools/hfgs/godot-addons.mjs <Godot 프로젝트> [--only gdunit4,dialogic,aseprite] [--force]
+// 사용법: node tools/hfgs/godot-addons.mjs <Godot 프로젝트> [--only gdunit4,dialogic,aseprite,godot_ai] [--force]
 // 에셋 라이브러리 대신 GitHub 태그를 쓰는 이유: 버전을 고정하고, 같은 명령으로 CI에서도 깔 수 있어서다.
 // 이미 있는 애드온은 건너뛴다(--force면 지우고 다시 받음). addons/는 커밋한다.
 // 플러그인이 에디터에서 켜질 때(_enable_plugin) 써 넣는 프로젝트 설정도 같이 쓴다. 파일로만 등록하면 에디터가 그 단계를 건너뛰어
@@ -30,7 +30,9 @@ export const DIALOGIC_SETTINGS=[
 export const ADDONS={
  gdunit4:{repo:'https://github.com/MikeSchulze/gdUnit4',tag:'v6.2.2',dir:'gdUnit4',note:'단위 테스트(GDScript·C#). CLI 종료 코드 0 성공, 100 실패, 101 경고'},
  dialogic:{repo:'https://github.com/dialogic-godot/dialogic',tag:'2.0-alpha-20',dir:'dialogic',note:'대사 시스템. 2.0은 아직 alpha이고 Godot 4.5+ 요구',settings:DIALOGIC_SETTINGS},
- aseprite:{repo:'https://github.com/viniciusgerevini/godot-aseprite-wizard',tag:'v9.8.0-4',dir:'AsepriteWizard',note:'Aseprite 파일 자동 가져오기(스프라이트 애니메이션)'}
+ aseprite:{repo:'https://github.com/viniciusgerevini/godot-aseprite-wizard',tag:'v9.8.0-4',dir:'AsepriteWizard',note:'Aseprite 파일 자동 가져오기(스프라이트 애니메이션)'},
+ // 리드가 에디터를 조작하고 플레이테스트하는 MCP(8단계 평가로 선택). 에디터가 열리면 uv로 Python 서버를 띄운다. 저장소 안 위치가 plugin/addons/다.
+ godot_ai:{repo:'https://github.com/hi-godot/godot-ai',tag:'v4.3.1',dir:'godot_ai',src:'plugin/addons/godot_ai',note:'에디터 조작·플레이테스트 MCP. 에디터를 열 때 uv가 있어야 함'}
 };
 
 // 얕은 클론으로 태그 하나만 받는다. 테스트에서는 가짜 clone을 넣는다.
@@ -87,8 +89,8 @@ export function installAddons(project,{only,force=false,clone=gitClone,log=conso
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-addon-'));
   try{
    clone(a.repo,a.tag,tmp);
-   const src=path.join(tmp,'addons',a.dir);
-   if(!fs.existsSync(path.join(src,'plugin.cfg')))throw Error(`${a.repo} @ ${a.tag}에 addons/${a.dir}/plugin.cfg가 없음`);
+   const src=path.join(tmp,a.src??`addons/${a.dir}`);
+   if(!fs.existsSync(path.join(src,'plugin.cfg')))throw Error(`${a.repo} @ ${a.tag}에 ${a.src??`addons/${a.dir}`}/plugin.cfg가 없음`);
    fs.rmSync(target,{recursive:true,force:true});
    fs.mkdirSync(path.dirname(target),{recursive:true});
    fs.cpSync(src,target,{recursive:true});
@@ -111,7 +113,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   else if(args[i].startsWith('--')){console.error(`알 수 없는 인자: ${args[i]}`);process.exit(2);}
   else project=args[i];
  }
- if(!project){console.error('사용법: godot-addons.mjs <Godot 프로젝트> [--only gdunit4,dialogic,aseprite] [--force]');process.exit(2);}
+ if(!project){console.error('사용법: godot-addons.mjs <Godot 프로젝트> [--only gdunit4,dialogic,aseprite,godot_ai] [--force]');process.exit(2);}
  try{installAddons(path.resolve(project),{only,force});}
  catch(e){console.error('오류: '+e.message);process.exit(1);}
 }

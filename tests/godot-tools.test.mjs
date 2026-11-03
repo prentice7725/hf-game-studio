@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {checkSyntax,runTests,checkRun,checkAddonSettings,takeShot,gdFiles,findGodot,shotPrefix,ERROR_PATTERN,GDUNIT_TOOL} from '../tools/godot-check.mjs';
+import {checkSyntax,runTests,checkRun,checkAddonSettings,takeShot,gdFiles,findGodot,shotPrefix,autoloadNames,ERROR_PATTERN,GDUNIT_TOOL} from '../tools/godot-check.mjs';
 import {installAddons,enablePlugins,setProjectSettings,hasProjectSetting,ADDONS,DIALOGIC_SETTINGS} from '../tools/godot-addons.mjs';
 import {installGodot,GDIGNORE_DIRS} from '../scripts/setup.mjs';
 import {STUDIO_ROOT} from '../scripts/task.mjs';
@@ -19,8 +19,8 @@ const fs=require('fs');const a=process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)},JSON.stringify(a)+'\\n');
 const mode=process.env.FAKE_GODOT??'ok';
 if(a.includes('--version')){console.log('4.7.2.stable.official');process.exit(0);}
-if(a.includes('--check-only')){const f=a[a.indexOf('--script')+1];if(mode==='syntax-error'&&f.includes('bad')){console.error('SCRIPT ERROR: Parse Error: Unexpected token');process.exit(1);}process.exit(0);}
-if(a.includes(${JSON.stringify(GDUNIT_TOOL)})){const code=Number(process.env.FAKE_GDUNIT_EXIT??0);fs.writeSync(1,'gdUnit4 run\\nExit code: '+code+'\\n');if(mode==='crash-after')process.kill(process.pid,'SIGSEGV');process.exit(code);}
+if(a.includes('--check-only')){const f=a[a.indexOf('--script')+1];if(mode==='syntax-error'&&f.includes('bad')){console.error('SCRIPT ERROR: Parse Error: Unexpected token');process.exit(1);}if(mode==='autoload'&&f.includes('main')){console.error('SCRIPT ERROR: Parse Error: Identifier not found: Dialogic');process.exit(1);}process.exit(0);}
+if(a.includes(${JSON.stringify(GDUNIT_TOOL)})){const code=Number(process.env.FAKE_GDUNIT_EXIT??0);fs.writeSync(1,'gdUnit4 run\\nExit code: '+code+'\\n');if(mode==='crash-after')process.kill(process.pid,'SIGSEGV');if(mode==='exit-crash')process.exit(3);process.exit(code);}
 if(a.includes('--quit-after')&&!a.includes('--write-movie')){if(mode==='boot-error')console.log('SCRIPT ERROR: Invalid call');else console.log('HFGS_READY mercenaries=1 contracts=2');process.exit(0);}
 if(a.includes('--write-movie')){const out=a[a.indexOf('--write-movie')+1];if(mode!=='no-frames')fs.writeFileSync(out.replace(/\\.png$/,'00000000.png'),'');process.exit(0);}
 process.exit(0);`,{mode:0o755});
@@ -95,6 +95,29 @@ test('test: gdUnit4가 없으면 안내, 종료 코드 0·101은 통과, 100은 
   assert.deepEqual(withEnv({FAKE_GODOT:'crash-after'},()=>runTests(bin,dir,opts)),[]);
   assert.match(withEnv({FAKE_GODOT:'crash-after',FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir,opts))[0],/gdUnit4 실패/);
  }
+ // 에디터를 열어 둔 채 돌리면 Windows에서 0xC0000005 같은 엉뚱한 코드로 죽는다(마일스톤 2 실측). 찍힌 결과를 쓴다.
+ assert.deepEqual(withEnv({FAKE_GODOT:'exit-crash'},()=>runTests(bin,dir,opts)),[]);
+ assert.match(withEnv({FAKE_GODOT:'exit-crash',FAKE_GDUNIT_EXIT:'100'},()=>runTests(bin,dir,opts))[0],/gdUnit4 실패/);
+});
+
+test('syntax: 자동 로드 이름을 못 찾으면 get_node("/root/이름")로 쓰라고 알린다',t=>{
+ const {bin,opts}=fakeGodot(t),dir=godotProject(t);
+ fs.appendFileSync(path.join(dir,'project.godot'),'\n[autoload]\n\nDialogic="*res://addons/dialogic/Core/DialogicGameHandler.gd"\n');
+ assert.deepEqual(autoloadNames(dir),['Dialogic']);
+ const problems=withEnv({FAKE_GODOT:'autoload'},()=>checkSyntax(bin,dir,opts));
+ assert.match(problems.join('\n'),/get_node\("\/root\/Dialogic"\)/);
+});
+
+test('installGodot: 이미 있는 .gitignore에는 템플릿의 없는 줄만 더한다',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-g-'));
+ t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(dir,'.gitignore'),'node_modules/\r\n.godot/\r\n');
+ assert.ok(installGodot(dir,{log:()=>{}}).includes('.gitignore'));
+ const text=fs.readFileSync(path.join(dir,'.gitignore'),'utf8');
+ assert.ok(text.startsWith('node_modules/\r\n.godot/\n'),JSON.stringify(text));
+ assert.match(text,/shots\/\nreports\/\n$/);
+ assert.equal(text.match(/\.godot\//g).length,1);
+ assert.ok(!installGodot(dir,{log:()=>{}}).includes('.gitignore'),'두 번째는 더할 것이 없다');
 });
 
 test('run: HFGS_READY와 스크립트 오류를 본다',t=>{
@@ -161,9 +184,9 @@ test('installAddons: 태그로 받아 addons/에 넣고 project.godot에 등록,
  const dir=godotProject(t),cloned=[];
  const clone=(repo,tag,dest)=>{
   cloned.push([repo,tag]);
-  const name=Object.values(ADDONS).find(a=>a.repo===repo).dir;
-  fs.mkdirSync(path.join(dest,'addons',name),{recursive:true});
-  fs.writeFileSync(path.join(dest,'addons',name,'plugin.cfg'),`[plugin]\nname="${name}"\n`);
+  const a=Object.values(ADDONS).find(a=>a.repo===repo),sub=a.src??`addons/${a.dir}`;
+  fs.mkdirSync(path.join(dest,sub),{recursive:true});
+  fs.writeFileSync(path.join(dest,sub,'plugin.cfg'),`[plugin]\nname="${a.dir}"\n`);
  };
  const done=installAddons(dir,{only:['gdunit4','dialogic'],clone,log:()=>{}});
  assert.deepEqual(done,['gdUnit4','dialogic']);
@@ -174,6 +197,10 @@ test('installAddons: 태그로 받아 addons/에 넣고 project.godot에 등록,
  assert.ok(hasProjectSetting(project,{section:'autoload',key:'Dialogic'})&&hasProjectSetting(project,{section:'input',key:'dialogic_default_action'}),'Dialogic의 _enable_plugin이 쓰는 설정을 대신 쓴다');
  assert.deepEqual(checkAddonSettings(dir),[]);
  assert.deepEqual(installAddons(dir,{only:['gdunit4'],clone,log:()=>{}}),[],'이미 있으면 받지 않는다');
+ // godot-ai는 저장소 안 plugin/addons/godot_ai에 있다.
+ assert.deepEqual(installAddons(dir,{only:['godot_ai'],clone,log:()=>{}}),['godot_ai']);
+ assert.ok(fs.existsSync(path.join(dir,'addons','godot_ai','plugin.cfg')));
+ assert.match(fs.readFileSync(path.join(dir,'project.godot'),'utf8'),/"res:\/\/addons\/godot_ai\/plugin\.cfg"/);
  // 예전에 깐 저장소(애드온은 있고 설정은 없음)도 다시 돌리면 설정이 들어간다.
  const dir2=godotProject(t,{addons:['dialogic']});
  assert.deepEqual(installAddons(dir2,{only:['dialogic'],clone,log:()=>{}}),[]);

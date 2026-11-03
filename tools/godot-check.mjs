@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Godot 프로젝트 검사. task.mjs의 수용 검사와 CI가 쓴다. Godot 실행 파일은 GODOT_BIN(또는 --godot)으로 받는다.
 // 사용법: node tools/hfgs/godot-check.mjs <syntax|test|run|shot|all> [--project DIR] [--godot BIN] [--out DIR]
-//   syntax  --import로 클래스 캐시를 만든 뒤 scripts/·test/의 .gd를 하나씩 --check-only로 파싱한다
+//   syntax  --import로 클래스 캐시를 만든 뒤 scripts/·test/의 .gd를 하나씩 --check-only로 파싱한다.
+//           --check-only는 자동 로드 싱글턴(Dialogic 등)을 모르므로 코드는 get_node("/root/Dialogic")처럼 쓴다(실패하면 알려 줌)
 //   test    gdUnit4 CLI(--headless, --ignoreHeadlessMode)로 test/를 돈다. 종료 코드 0 성공, 100 실패, 101 경고(통과로 봄).
-//           Godot 4.7.2가 테스트를 다 돌린 뒤 종료 시그널로 죽는 일이 있어(CI 실측), 그때는 gdUnit4가 찍은 "Exit code: N"을 쓴다
+//           Godot 4.7.2가 테스트를 다 돌린 뒤 종료 시그널로 죽는 일이 있어(CI 실측), 그때는 gdUnit4가 찍은 "Exit code: N"을 쓴다.
+//           같은 프로젝트를 에디터로 열어 둔 채 돌려도 종료하다 0xC0000005로 죽는다(마일스톤 2 실측). 이때도 찍힌 결과를 쓴다
 //   run     헤드레스로 시작 장면을 몇 프레임 띄워 스크립트 오류가 없고 HFGS_READY 로그가 나오는지 본다.
 //           헤드리스에는 입력 이벤트가 없어 Dialogic의 'InputMap action "dialogic_default_action" doesn't exist'(PR 20 실측)는 로그에
 //           안 나오므로, 애드온이 project.godot에 요구하는 설정(자동 로드·입력 액션)이 있는지 파일로 따로 본다
@@ -50,14 +52,27 @@ export function godot(bin,args,{project,timeoutMs=10*60*1000,spawn=spawnSync,pre
 }
 const tail=(s,n=1500)=>s.trim().slice(-n);
 
+// project.godot의 [autoload] 이름들. --check-only가 이 이름을 몰라 'Identifier not found'를 내면 우회 방법을 알려 주는 데 쓴다.
+export function autoloadNames(project){
+ const file=path.join(project,'project.godot');
+ if(!fs.existsSync(file))return [];
+ const m=/^\[autoload\][^\n]*\n([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(fs.readFileSync(file,'utf8'));
+ return m?[...m[1].matchAll(/^([A-Za-z_]\w*)=/gm)].map(x=>x[1]):[];
+}
+
 export function checkSyntax(bin,project,opts={}){
  const problems=[];
  // 클래스 이름(class_name) 캐시가 있어야 다른 스크립트를 참조하는 파일이 파싱된다.
  const imp=godot(bin,['--headless','--path',project,'--import'],{project,...opts});
  if(imp.status!==0)problems.push(`--import 실패(종료 ${imp.status}): ${tail(imp.output)}`);
+ const autoloads=autoloadNames(project);
  for(const f of gdFiles(project)){
   const r=godot(bin,['--headless','--path',project,'--check-only','--script',`res://${f}`],{project,...opts});
-  if(r.status!==0||ERROR_PATTERN.test(r.output))problems.push(`${f}: ${tail(r.output,600)||`종료 코드 ${r.status}`}`);
+  if(r.status!==0||ERROR_PATTERN.test(r.output)){
+   const missing=[...r.output.matchAll(/Identifier not found: (\w+)/g)].map(x=>x[1]).filter(n=>autoloads.includes(n));
+   const hint=missing.length?` (자동 로드 ${[...new Set(missing)].join(', ')}는 --check-only에서 보이지 않음: get_node("/root/${missing[0]}")로 쓸 것)`:'';
+   problems.push(`${f}: ${tail(r.output,600)||`종료 코드 ${r.status}`}${hint}`);
+  }
  }
  return problems;
 }
@@ -67,11 +82,13 @@ export function runTests(bin,project,opts={}){
  // runtest.sh의 -d --remote-debug는 대화형 디버거(-d) 때문에 넣는 것이라 빼고 돈다. 4.7은 포트 0을 거부해 오류만 찍는다.
  const r=godot(bin,['--headless','--path',project,'-s',GDUNIT_TOOL,'--ignoreHeadlessMode','-a','res://test'],{project,...opts});
  let code=r.status;
- if(code===null){
+ // 시그널로 죽었거나(리눅스) 0·100·101이 아닌 코드로 죽었으면(윈도의 0xC0000005 등) gdUnit4가 찍은 결과를 쓴다.
+ if(code===null||![0,100,101].includes(code)){
   const printed=/Exit code: (\d+)/.exec(r.output);
-  if(!printed)return [`gdUnit4가 시그널 ${r.signal}로 끝났고 결과를 찍지 못함: ${tail(r.output)}`];
+  const how=code===null?`시그널 ${r.signal}`:`종료 코드 ${code}`;
+  if(!printed)return [`gdUnit4가 ${how}로 끝났고 결과를 찍지 못함${code===3221225477?' (0xC0000005: 같은 프로젝트를 에디터로 열어 두었으면 닫고 다시 돌릴 것)':''}: ${tail(r.output)}`];
   code=Number(printed[1]);
-  console.error(`경고: Godot이 테스트를 마친 뒤 시그널 ${r.signal}로 끝남. gdUnit4가 찍은 결과(Exit code: ${code})를 씀`);
+  console.error(`경고: Godot이 테스트를 마친 뒤 ${how}로 끝남(에디터를 열어 두었으면 닫을 것). gdUnit4가 찍은 결과(Exit code: ${code})를 씀`);
  }
  if(code===0)return [];
  if(code===101){console.error('경고: gdUnit4가 경고로 끝남(101): '+tail(r.output,400));return [];}

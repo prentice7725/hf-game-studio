@@ -89,3 +89,17 @@ test('convert: 통과한 파일만 id.dtl로 쓰고, --check는 쓰지 않는다
  assert.match(fs.readFileSync(path.join(out,'contract-grain-cart.dtl'),'utf8'),/^label intro$/m);
  assert.equal(convert([good],{schema:SCHEMA,glossary:null,outDir:out,check:true})[0].errors.length,0);
 });
+
+test('convert --compare: 있는 .dtl이 변환 결과와 같아야 통과(줄바꿈 CRLF는 같게 봄), 없거나 다르면 실패',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-dtl-'));
+ const good=path.join(dir,'good.json'),out=path.join(dir,'dialogue'),dtl=path.join(out,'contract-grain-cart.dtl');
+ fs.writeFileSync(good,JSON.stringify(doc));
+ const compare=()=>convert([good],{schema:SCHEMA,glossary:GLOSSARY,outDir:out,check:true,compare:true})[0].errors.join();
+ assert.match(compare(),/가 없음/);
+ convert([good],{schema:SCHEMA,glossary:GLOSSARY,outDir:out});
+ assert.equal(compare(),'');
+ fs.writeFileSync(dtl,fs.readFileSync(dtl,'utf8').replace(/\n/g,'\r\n'));
+ assert.equal(compare(),'');
+ fs.appendFileSync(dtl,'label extra\n');
+ assert.match(compare(),/변환 결과와 다름/);
+});

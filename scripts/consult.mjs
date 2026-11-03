@@ -103,6 +103,19 @@ function saveReport(report,dir=reportsDir()){
  return file;
 }
 
+// 모델 쪽 일시 오류(용량 초과·과부하)는 한 번만 다시 부른다. 마일스톤 2에서 Codex가 'Selected model is at capacity'로
+// 실패했고 바로 다시 돌리니 통과했다. 두 번째도 실패하면 다른 리뷰어·작가로 바꾸라고 알린다.
+export const TRANSIENT=/at capacity|overloaded|rate limit/i;
+export function retrying(run,{log=console.error,other='다른 계열(--reviewer agy 등)'}={}){
+ try{return run();}
+ catch(e){
+  if(!TRANSIENT.test(e.message))throw e;
+  log(`일시 오류라 한 번 다시 부름: ${e.message.slice(0,200)}`);
+  try{return run();}
+  catch(e2){if(TRANSIENT.test(e2.message))e2.message+=` (다시 불러도 일시 오류: 잠시 뒤에 하거나 ${other}로 바꿀 것)`;throw e2;}
+ }
+}
+
 // 전문가 호출을 작업 트리 비교로 감싼다. 바뀌었으면 답을 버리고 실패시킨다.
 function guarded(repo,run,{git=gitOut}={}){
  const before=snapshot(repo,{git});
@@ -130,7 +143,7 @@ export function review({repo,base,reviewer='codex',author='claude',authorModel,c
  // 검사가 파일을 만들거나 고칠 수 있으므로 diff와 목록은 검사가 끝난 뒤의 상태로 다시 받는다. 리뷰어가 보는 것과 작업 트리 비교의 기준이 같아진다.
  const {diff,changed,untracked}=commands.length?changes(repo,base,git):before;
  const prompt=reviewPrompt({criteria,base,diff,untracked,changed,checks,reviewer});
- const r=guarded(repo,()=>invoke(adapter,{repo,prompt,schema:REVIEW_SCHEMA,options}),{git});
+ const r=guarded(repo,()=>retrying(()=>invoke(adapter,{repo,prompt,schema:REVIEW_SCHEMA,options})),{git});
  const {verdict,advisory}=judge(r.result);
  const report={kind:'review',created_at:new Date().toISOString(),repo,base,head:git(repo,['rev-parse','HEAD']).trim(),adapter:reviewer,model:reviewerModel,author,author_model:authorModel??null,
   criteria,checks,verdict,advisory,summary:r.result.summary,confidence:r.result.confidence,blocking_criteria:r.result.blocking_criteria,
@@ -172,7 +185,7 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
   ...(brief.length?{length:brief.length}:{}),...(brief.style?{style:brief.style}:{}),...(brief.structure?{structure:brief.structure}:{})},
   design_docs:reading,result_schema:WRITE_SCHEMA,instructions:[...WRITE_ORDERS,...readOnlyOrders(adapter.reader)]});
  const options={...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{}),timeout_ms:30*60*1000};
- const r=guarded(repo,()=>invoke(adapter,{repo,prompt,schema:WRITE_SCHEMA,options,timeoutMs:options.timeout_ms}),{git});
+ const r=guarded(repo,()=>retrying(()=>invoke(adapter,{repo,prompt,schema:WRITE_SCHEMA,options,timeoutMs:options.timeout_ms}),{other:'다른 작가(--writer codex 등)'}),{git});
  if((brief.format??'markdown')==='json'){try{JSON.parse(r.result.content);}catch(e){fail(`작가가 낸 content가 JSON이 아님: ${e.message}`);}}
  const report={kind:'write',created_at:new Date().toISOString(),repo,adapter:writer,model:model??adapter.DEFAULT_MODEL??null,brief,...r.result,session_id:r.session_id??null,redacted:r.redacted};
  return {report,file:saveReport(report,dir),warnings:r.warnings??[]};
