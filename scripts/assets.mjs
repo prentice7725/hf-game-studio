@@ -151,18 +151,31 @@ export function briefArgs(task,{file,spec,assetId},{repo}){
 }
 // 매니페스트 규격을 brief의 constraints로 넘긴다. asset-pipeline(PR 43 이후)은 resolution과 transparency가 있으면
 // 리사이즈·배경 제거를 돌리고 max_file_kb를 넘는 파일은 QA에서 FAIL로 처리한다. 그래서 후보가 처음부터 매니페스트에 맞게 나온다.
+// 단 PIXEL_STATIC에는 resolution을 넘기지 않는다. asset-pipeline이 그 크기로 바로 그려서(128×128) 픽셀 워크플로가 캐릭터 대신
+// 색 덩어리를 냈다(마일스톤 3 실측). 워크플로 기본 크기로 생성하고, 매니페스트보다 크면 리드가 최근접 축소만 해 pick --from으로 넘긴다.
 export function prepareBrief(brief,task,spec){
  const out={...brief};
  if(task.asset_pipeline.workflow_id)out.workflow_preferences={...(brief.workflow_preferences??{}),id:task.asset_pipeline.workflow_id,allow_experimental:true};
  if(spec.negative_prompt)out.negative_prompt=spec.negative_prompt;
  if(!/\.wav$/i.test(spec.file)){
   const c={...(brief.constraints??{})};
-  if(spec.width!==undefined&&spec.height!==undefined)c.resolution=[spec.width,spec.height];
+  if(task.asset_pipeline.output_class==='PIXEL_STATIC')delete c.resolution;
+  else if(spec.width!==undefined&&spec.height!==undefined)c.resolution=[spec.width,spec.height];
   if(spec.alpha===true)c.transparency=true;
   if(spec.max_kb!==undefined)c.max_file_kb=spec.max_kb;
   out.constraints=c;
  }
  return out;
+}
+
+// 생성 단계 원본(asset-pipeline run 폴더의 010_generation). 후처리(정제·양자화·리사이즈) 전 그림이라, 후보가 엉터리일 때
+// 생성부터 망가졌는지 후처리에서 망가졌는지 사용자와 함께 바로 가를 수 있다. 규격 검사와 Pixel Gate는 그림 내용을 보지 않는다.
+export function rawOutput(manifest){
+ if(!manifest)return null;
+ const dir=path.join(path.dirname(manifest),'010_generation');
+ if(!fs.existsSync(dir))return null;
+ const png=fs.readdirSync(dir).filter(f=>/\.png$/i.test(f)).sort()[0];
+ return png?path.join(dir,png):null;
 }
 
 // inspect 결과의 outputs 중 매니페스트 파일과 같은 형식인 것. SFX는 flac 원본과 wav 변환본이 함께 나오므로 wav를 고른다.
@@ -220,9 +233,14 @@ export async function generate(task,{repo=process.cwd(),client,candidates=1,seed
    fs.copyFileSync(out,copy);
    cand.output=out;cand.candidate=copy;
    cand.spec_errors=checkAsset({...t.spec,file:copy});
+   const raw=t.sfx?null:rawOutput(r.manifest);
+   if(raw&&path.resolve(raw)!==path.resolve(out)){
+    cand.raw=path.join(dir,`${String(n).padStart(2,'0')}-${g.run_id}-raw${path.extname(raw).toLowerCase()}`);
+    fs.copyFileSync(raw,cand.raw);
+   }
   }else if(r.status!=='FAILED'&&r.status!=='TIMEOUT')cand.error=cand.error??`outputs에 ${t.ext} 파일이 없음`;
   save();
-  log(`후보 ${n}: ${cand.status}${cand.engine_status?` (${cand.engine_status})`:''}${cand.candidate?` → ${cand.candidate}`:''}${cand.spec_errors?.length?` 규격 불일치: ${cand.spec_errors.join('; ')}`:cand.spec_errors?' 규격 OK':''}${cand.error?` 오류: ${cand.error}`:''}`);
+  log(`후보 ${n}: ${cand.status}${cand.engine_status?` (${cand.engine_status})`:''}${cand.candidate?` → ${cand.candidate}`:''}${cand.raw?` (생성 원본 ${cand.raw})`:''}${cand.spec_errors?.length?` 규격 불일치: ${cand.spec_errors.join('; ')}`:cand.spec_errors?' 규격 OK':''}${cand.error?` 오류: ${cand.error}`:''}`);
   // 실패하면 재시도 없이 멈추고 사용자와 상의한다(SKILL 규칙).
   if(r.status==='FAILED'||r.status==='TIMEOUT')break;
  }
@@ -294,7 +312,7 @@ async function main(argv){
   else{
    for(const c of note.candidates)console.log(`${c.n}\t${c.run_id??'-'}\t${c.status}${c.engine_status?`(${c.engine_status})`:''}\t${c.spec_errors===null?'-':c.spec_errors.length?'규격 불일치':'규격 OK'}\t${c.candidate??c.error??''}`);
    console.log(`노트: ${file}`);
-   console.log('후보는 사용자가 보고(들고) 고른다. 고르면: assets.mjs pick TASK.json <번호> --approved');
+   console.log('후보는 사용자가 보고(들고) 고른다. 이미지는 생성 원본(-raw)도 함께 보여 줄 것(규격 OK는 그림 내용을 보증하지 않음). 고르면: assets.mjs pick TASK.json <번호> --approved');
   }
   const last=note.candidates.at(-1);
   return last&&!['FAILED','TIMEOUT','BLOCKED'].includes(last.status)&&last.run_id?0:1;

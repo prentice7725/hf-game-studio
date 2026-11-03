@@ -154,6 +154,17 @@ Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai
 - 검사 도구: 자동 로드를 모르는 `--check-only`는 실패 메시지에서 `get_node("/root/이름")`을 알려 주고, 에디터를 열어 둔 채 돌린 gdUnit4가 이상한 종료 코드로 죽으면 찍힌 결과를 쓴다. 대사 변환기에 `--compare`(낡은 `.dtl` 잡기)와 작업 파일 `dtl_dir`, 변환만 하는 글 작업의 `writer: "none"`.
 - setup: 있는 `.gitignore`에 템플릿 줄을 합치고(`reports/` 추가), `godot-addons.mjs`가 godot-ai도 깐다. consult는 용량 초과를 한 번 재시도한다.
 
+**마일스톤 3 실측 (2026-11-03).** 승인한 애셋을 Godot 장면에 넣는 마일스톤(2작업)을 돌려 마찰 12건을 모았고(merc-guild `design/milestone-3.md`), 다음을 반영했다. 초상화·효과음 작업은 끝났고, 픽셀 스프라이트 작업은 asset-pipeline의 생성 크기 문제로 보류 중이다.
+
+- asset-pipeline이 매니페스트 크기(128×128)를 생성 크기로 써서 픽셀 워크플로가 색 덩어리를 냈다 → `prepareBrief`가 `PIXEL_STATIC`에는 `resolution`을 넘기지 않는다(축소는 리드가 `pick --from`). asset-pipeline 쪽 수정도 필요하다.
+- 규격 검사와 Pixel Gate가 엉터리 그림을 통과시켜 사람 확인만이 방어선이었다 → 후보 곁에 생성 단계 원본(`-raw`)을 남겨 함께 보여 준다. plan의 낡은 PIXEL_STATIC 경고도 고쳤다.
+- 막힌 작업을 내려놓을 길이 없었다 → `task.mjs hold --reason`. 보류한 작업은 `start --restart` 전까지 verify·start를 거절한다.
+- 준비 변경을 작업 도중에 커밋해 리뷰 `--base`를 손으로 고쳤다 → `verify --base`(시작 커밋에서 이어진 커밋만), SKILL.md에 "첫 start 전에 준비 커밋을 묻는다".
+- Godot 작업의 데이터 `--expect`를 손으로 써서 따옴표가 벗겨졌다 → godot 종류도 `schema`·`expect`로 데이터 검사를 자동으로 만든다.
+- 플레이테스트 포트를 명령에 박을 수 없었다 → `GODOT_AI_PORT`·`GODOT_AI_WS_PORT` 환경변수로 task.mjs·review를 돌리라고 문서화. "초상화가 보인다"를 못 봤다 → 시나리오 `visible` 단계.
+- 리뷰어가 카운터만 보는 테스트를 잡았다 → godot-scene 규칙 "효과는 노드 상태(texture, visible, playing)로 검사". 사람 확인 기준이 `decision`으로 끝나 확인을 남길 곳이 없었다 → `dispose ... "AC5=confirmed:..."`.
+- 에디터가 템플릿 `main.tscn`을 저장해 범위 밖 변경이 반복됐다 → 템플릿에 `grow_*`를 넣고, 에디터를 한 번 열어 저장된 형태를 준비 커밋에 넣으라고 문서화(uid는 프로젝트마다 달라 템플릿에 넣을 수 없다). 에디터를 띄운 채 돌린 `godot-check`의 충돌은 이번에 재현되지 않아 문서의 단정을 누그러뜨렸다.
+
 ## 애셋을 Godot으로
 
 - **정지 이미지(PNG):** 그대로 가져온다. 매니페스트의 크기·투명도 검사를 유지한다.
@@ -161,7 +172,7 @@ Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai
 - **효과음(WAV):** Godot이 바로 가져온다. 길이·채널·샘플레이트는 매니페스트로 검사한다(PR 8의 WAV 검사).
 
 asset-pipeline에 남은 빈틈은 다음과 같다. 이건 asset-pipeline 쪽에서 고쳐야 한다.
-- `PIXEL_STATIC`은 색을 자동으로 줄이지 않아, 생성물이 Pixel Gate(32색)에서 FAILED가 된다(실측 17,951색).
+- `PIXEL_STATIC`의 색 줄이기는 PR 43의 32색 양자화로 해결됐다. 남은 문제는 brief의 `constraints.resolution`을 생성 크기로 쓰는 것이다(마일스톤 3: 128×128로 바로 그려 노이즈). 생성은 워크플로 기본 크기로 하고 그 뒤에 줄여야 한다.
 - `PIXEL_ANIMATION`은 검토된 걷기 동작만 지원한다. idle과 attack은 아직 없다.
 
 ## 효과(VFX): 별도 프로젝트로 (결정, 2026-11-03)

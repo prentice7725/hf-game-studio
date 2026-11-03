@@ -7,7 +7,9 @@
 //   start  TASK.json   plan + red-first. 손대기 전 트리에서 수용 검사를 돌려 실패하는지 확인하고, 작업 전 상태를 기록한다.
 //   check  TASK.json   수용 검사만 돌린다(작업 도중 확인용).
 //   verify TASK.json   수용 검사 통과 + 범위 밖 변경 없음 + 검사 기준 파일 불변을 확인하고, 다른 계열 리뷰 명령을 알려 준다.
-// 사용법: node scripts/task.mjs <plan|start|check|verify> <TASK.json> [--repo DIR] [--restart] [--json]
+//                      --base REV는 리뷰 기준 커밋(기본 start 때의 HEAD)을 바꾼다. 작업 도중 준비 변경을 따로 커밋했을 때 쓴다.
+//   hold   TASK.json   막힌 작업을 보류로 남긴다(--reason 필수). 다시 하려면 start --restart.
+// 사용법: node scripts/task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--restart] [--base REV] [--reason TEXT] [--json]
 // 상태는 HFGS_HOME(기본 ~/.hf-game-studio)/tasks/<task_id>.json에 남는다. 게임 저장소 안에는 쓰지 않는다.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -139,17 +141,20 @@ export function pipelineDirectives(p,{classes=[],repo=process.cwd(),scope=[],edi
 // 매니페스트 검사 대상: asset_files가 없으면 scope.paths 중 검사 도구가 읽을 수 있는 PNG·WAV.
 const assetFiles=input=>input.asset_files??input.scope.paths.filter(p=>/\.(png|wav)$/i.test(p));
 const jsonFiles=input=>input.data_files??input.scope.paths.filter(p=>p.endsWith('.json'));
+// 수용 명령은 셸로 돈다. 큰따옴표 안에서도 bash는 $·백틱을, Windows cmd는 %이름%을 확장하므로 그런 값은 원래 글자로 검사되지 않는다. 미리 거절한다.
+const expectArgs=input=>Object.entries(input.expect??{}).flatMap(([p,v])=>{
+ if(!p.startsWith('/'))fail(`expect의 경로는 /로 시작해야 함: ${p}`);
+ const arg=`${p}=${JSON.stringify(v)}`;
+ if(/[$`]|%[^%\s]+%/.test(arg))fail(`expect에 $나 백틱, %이름%은 쓸 수 없음(셸이 확장함): ${p}`);
+ return ['--expect',arg];
+});
 
 export function autoAcceptance(input,kind){
  const out=[];
  if(kind.verify==='schema'&&input.schema){
   const files=jsonFiles(input);
   if(!files.length)fail('schema 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
-  const expects=Object.entries(input.expect??{}).map(([p,v])=>{
-   if(!p.startsWith('/'))fail(`expect의 경로는 /로 시작해야 함: ${p}`);
-   return ['--expect',`${p}=${JSON.stringify(v)}`];
-  });
-  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expects.flat()].map(quote).join(' '));
+  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)].map(quote).join(' '));
  }
  // 대사: 스키마 검사가 아니라 변환기의 --check를 돌린다. 스키마·그래프 규칙·용어집 인물 ID·Dialogic 변환까지 한 번에 본다.
  if(kind.verify==='dialogue'&&input.schema){
@@ -166,6 +171,13 @@ export function autoAcceptance(input,kind){
  }
  // Godot: 문법 + gdUnit4 + 헤드리스 부팅. GODOT_BIN이 있어야 돈다(없으면 검사 도구가 종료 코드 2로 알린다).
  if(kind.verify==='godot'){
+  // 장면 작업이 데이터도 고치면 schema(+expect)로 데이터 검사를 자동으로 만든다. 글자 값의 --expect를 손으로 쓰면 따옴표가 셸에서 벗겨진다(마일스톤 3 실측).
+  if(input.schema){
+   // 범위의 test/ 아래 JSON(플레이테스트 시나리오)은 데이터가 아니다.
+   const files=input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')&&!p.startsWith('test/'));
+   if(!files.length)fail('schema 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
+   out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)].map(quote).join(' '));
+  }else if(input.expect!==undefined)fail('expect에는 schema가 필요함');
   out.push(['node',`${TOOLS_DIR}/godot-check.mjs`,'all',...(input.godot_project?['--project',input.godot_project]:[])].map(quote).join(' '));
  }
  if(kind.verify==='screenshot'&&input.screenshot){
@@ -218,9 +230,10 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
    fail(`asset_pipeline은 ${ok.join('·')} 작업에만 쓸 수 있음: ${input.kind}`);
   }
   pipeline=pipelineDirectives(input.asset_pipeline,{classes:kind.pipeline.output_classes,repo,scope:input.scope.paths,edit:kind.pipeline.edit===true});
-  // asset-pipeline의 PIXEL_STATIC은 자동 후처리가 투명화뿐이라, 색 수가 한도(기본 32)를 넘는 생성물은 Pixel Gate에서 FAILED가 된다.
+  // asset-pipeline(PR 43 이후)의 PIXEL_STATIC은 32색 양자화 뒤 Pixel Gate를 돈다. 그런데 규격 검사와 Pixel Gate는 크기·알파·용량·색 수만 봐서
+  // 캐릭터가 아닌 색 덩어리도 통과한다(마일스톤 3 실측). 매니페스트 크기는 생성 크기로 넘기지 않는다(assets.mjs prepareBrief).
   if(input.asset_pipeline.output_class==='PIXEL_STATIC')
-   warn('PIXEL_STATIC은 asset-pipeline이 색을 자동으로 줄이지 않아 Pixel Gate에서 FAILED로 끝나기 쉬움: 실패하면 멈추고 사용자와 상의');
+   warn('PIXEL_STATIC 후보는 규격 OK·Pixel Gate PASS여도 엉터리 그림일 수 있음: 사용자에게 후보와 생성 원본(-raw)을 함께 보여 줄 것. 생성은 워크플로 기본 크기라 후보가 매니페스트보다 크면 리드가 최근접 축소만 해서 pick --from으로 넘긴다');
  }else if(kind.pipeline?.required)fail(`${input.kind} 작업은 asset_pipeline이 필요함: Claude는 ${kind.pipeline.output_classes.includes('SFX')?'소리를 합성':'그림을 그릴'} 수 없어 asset-pipeline MCP로만 만든다`);
  // 검사 기준 파일을 작업 범위에 넣으면 기준을 느슨하게 고쳐 통과시킬 수 있다. 새 인물·새 규격은 사용자와 상의해 따로 고친다.
  const criteria=criteriaFiles(input,kind);
@@ -327,6 +340,7 @@ function writeState(state,env){
 export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},restart=false,env=process.env,checks=runChecks,git=gitOut}={}){
  const p=plan(input,{repo,root,warn});
  const old=readState(p.task_id,env);
+ if(old?.held&&!restart)fail(`보류한 작업(${old.held.reason}, ${old.held.at}): 다시 하려면 --restart`);
  if(old&&!old.verify?.ok&&!restart)fail(`이미 시작한 작업: ${stateFile(p.task_id,env)}. 이어서 하려면 check·verify를, 처음부터 다시 하려면 --restart`);
  if(old?.verify?.ok&&!restart)fail(`이미 끝난 작업(verify 통과): ${stateFile(p.task_id,env)}. 다시 열려면 --restart`);
  const dirty=dirtyPaths(repo,{git});
@@ -349,6 +363,17 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  return {plan:p,state,file:writeState(state,env)};
 }
 
+// hold: 막힌 작업(외부 도구 고장, 사용자 결정 대기)을 내려놓는다. 시작 기록에 보류 이유를 남기고, 범위 안 변경은 건드리지 않는다.
+// 보류한 작업은 verify를 거절하고 start --restart로만 다시 연다.
+export function hold(input,{reason,env=process.env}={}){
+ if(!str(reason))fail('hold에는 --reason "이유"가 필요함');
+ const state=readState(input?.task_id,env);
+ if(!state)fail(`시작 기록이 없음: ${stateFile(input?.task_id,env)} (시작하지 않은 작업은 보류할 것이 없다)`);
+ if(state.verify?.ok)fail('이미 verify를 통과한 작업이라 보류할 수 없음');
+ state.held={at:new Date().toISOString(),reason:reason.trim()};
+ return {state,file:writeState(state,env)};
+}
+
 export function check(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},checks=runChecks}={}){
  const p=plan(input,{repo,root,warn,baselineWarning:false});
  const results=checks(repo,p.acceptance_commands);
@@ -365,17 +390,25 @@ export function acTable(p,results){
 }
 
 // 다른 계열 리뷰 명령. 리뷰어는 작성자의 주장 없이 diff와 이 검사 결과만 본다.
-export function reviewCommand(p,state,{repo,studio=STUDIO_ROOT}={}){
- const args=['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--repo',slashPath(repo),'--base',state.head,
+// base는 기본으로 start 때의 HEAD다. 작업 도중 준비 변경(도구 갱신 등)을 따로 커밋했으면 verify --base로 그 커밋을 준다.
+export function reviewCommand(p,state,{repo,studio=STUDIO_ROOT,base=state.head}={}){
+ const args=['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--repo',slashPath(repo),'--base',base,
   ...p.success_criteria.flatMap(c=>['--criteria',c]),...p.acceptance_commands.flatMap(c=>['--check',c])];
  return args.map(quote).join(' ');
 }
 
-export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},env=process.env,checks=runChecks,git=gitOut}={}){
+export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},env=process.env,checks=runChecks,git=gitOut,base}={}){
  const p=plan(input,{repo,root,warn,baselineWarning:false});
  const state=readState(p.task_id,env);
  if(!state)fail(`시작 기록이 없음: 먼저 task.mjs start로 red-first 기준선을 남길 것 (${stateFile(p.task_id,env)})`);
  if(path.resolve(repo)!==state.repo)fail(`시작한 저장소(${state.repo})와 다름: ${path.resolve(repo)}`);
+ if(state.held)fail(`보류한 작업(${state.held.reason}): 다시 하려면 start --restart`);
+ // 리뷰 기준 커밋은 start 때의 HEAD에서 이어진 커밋이어야 한다(엉뚱한 커밋이면 리뷰 diff가 작업과 무관해진다).
+ if(base!==undefined){
+  base=git(repo,['rev-parse','--verify',`${base}^{commit}`]).trim();
+  try{git(repo,['merge-base','--is-ancestor',state.head,base]);}
+  catch{fail(`--base ${base}가 시작 커밋(${state.head.slice(0,7)})에서 이어진 커밋이 아님`);}
+ }
  const results=checks(repo,p.acceptance_commands);
  const failed=results.filter(r=>!passed(r)).map(r=>r.command);
  const errors=[];
@@ -391,7 +424,7 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
  if(outOfScope.length)errors.push(`범위 밖 변경: ${outOfScope.join(', ')} (scope.paths에 넣을 것이면 작업 파일을 고치고, 아니면 되돌릴 것)`);
  const ac=acTable(p,results);
  const ok=!failed.length&&!errors.length;
- const review=reviewCommand(p,state,{repo:path.resolve(repo)});
+ const review=reviewCommand(p,state,{repo:path.resolve(repo),base});
  state.verify={at:new Date().toISOString(),ok,failed,errors,changed,ac,review_command:review};
  writeState(state,env);
  return {plan:p,results,ac,failed,errors,changed,ok,review_command:review};
@@ -418,6 +451,7 @@ function parseArgs(args){
  for(let i=0;i<args.length;i++){
   const a=args[i];
   if(a==='--repo'){o.repo=args[++i];if(o.repo===undefined)fail('--repo에 값이 필요함');}
+  else if(a==='--base'||a==='--reason'){o[a.slice(2)]=args[++i];if(o[a.slice(2)]===undefined)fail(`${a}에 값이 필요함`);}
   else if(a==='--restart')o.restart=true;
   else if(a==='--json')o.json=true;
   else if(a.startsWith('--'))fail(`알 수 없는 인자: ${a}`);
@@ -428,7 +462,7 @@ function parseArgs(args){
 
 function main(){
  const [cmd,file]=process.argv.slice(2),a=parseArgs(process.argv.slice(4));
- if(!['plan','start','check','verify'].includes(cmd)||!file)fail('사용법: task.mjs <plan|start|check|verify> <TASK.json> [--repo DIR] [--restart] [--json]');
+ if(!['plan','start','check','verify','hold'].includes(cmd)||!file)fail('사용법: task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--restart] [--base REV] [--reason TEXT] [--json]');
  const repo=path.resolve(a.repo??process.cwd()),input=JSON.parse(fs.readFileSync(file,'utf8')),warn=m=>console.error('경고: '+m);
  if(cmd==='plan'){
   const p=plan(input,{repo,warn});
@@ -448,7 +482,12 @@ function main(){
   console.log('수용 검사:');printResults(results);
   return ok?0:1;
  }
- const r=verify(input,{repo,warn});
+ if(cmd==='hold'){
+  const {state,file:f}=hold(input,{reason:a.reason});
+  console.log(`보류: ${state.task_id} (${state.held.reason}). 기록: ${f}\n범위 안 변경은 그대로다. 버릴 것이면 git으로 되돌리고, 다시 할 때는 start --restart.`);
+  return 0;
+ }
+ const r=verify(input,{repo,warn,base:a.base});
  if(a.json){console.log(JSON.stringify(r,null,2));return r.ok?0:1;}
  console.log('수용 검사:');printResults(r.results);
  console.log('수용 기준:');for(const x of r.ac)console.log(`  ${x.status==='pass'?'PASS  ':x.status==='fail'?'FAIL  ':'직접 확인'} ${x.criterion}`);
