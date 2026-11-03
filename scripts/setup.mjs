@@ -73,8 +73,20 @@ export function installPhaser(repo,{dir=PHASER_DIR,root=STUDIO_ROOT,log=console.
 // Godot 본편 템플릿. 저장소 루트에 깐다(project.godot가 루트여야 data/·assets/가 res:// 안에 들어온다).
 // Godot이 가져오면 안 되는 폴더(프로토타입, 검사 도구, node_modules)에는 .gdignore를 둔다.
 export const GDIGNORE_DIRS=['prototype','tools','node_modules','docs'];
+// .gitignore는 저장소마다 이미 있어 템플릿 설치가 건너뛴다. 템플릿의 줄(.godot/, gdUnit4의 reports/ 등) 중 없는 것만 끝에 더한다.
+export function mergeGitignore(repo,{root=STUDIO_ROOT,log=console.log}={}){
+ const target=path.join(repo,'.gitignore');
+ if(!fs.existsSync(target))return false;
+ const have=fs.readFileSync(target,'utf8'),lines=new Set(have.split(/\r?\n/).map(l=>l.trim()));
+ const add=fs.readFileSync(path.join(root,'templates','godot','.gitignore'),'utf8').split(/\r?\n/).map(l=>l.trim()).filter(l=>l&&!lines.has(l));
+ if(!add.length)return false;
+ fs.writeFileSync(target,have.replace(/\s*$/,'\n')+`# Godot (hf-game-studio)\n${add.join('\n')}\n`);
+ log(`.gitignore에 더함: ${add.join(' ')}`);
+ return true;
+}
 export function installGodot(repo,{root=STUDIO_ROOT,log=console.log}={}){
  const done=installTemplate('godot',repo,'',{root,log});
+ if(mergeGitignore(repo,{root,log}))done.push('.gitignore');
  for(const d of GDIGNORE_DIRS){
   const dir=path.join(repo,d),mark=path.join(dir,'.gdignore');
   if(fs.existsSync(dir)&&!fs.existsSync(mark)){fs.writeFileSync(mark,'');log(`생성: ${d}/.gdignore`);done.push(`${d}/.gdignore`);}
@@ -100,7 +112,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   }
   if(godot){
    installGodot(path.resolve(repo));
-   console.log('\nGodot: node tools/hfgs/godot-addons.mjs . 로 애드온을 받고, GODOT_BIN을 Godot 4.7 실행 파일로 두고 node tools/hfgs/godot-check.mjs all');
+   console.log('\nGodot: node tools/hfgs/godot-addons.mjs . 로 애드온(godot-ai 포함, uv 필요)을 받고, GODOT_BIN을 Godot 4.7 실행 파일로 두고 node tools/hfgs/godot-check.mjs all. 준비 단계 변경은 첫 작업 전에 커밋할 것');
   }
   console.log('\n다음 단계: design/ 문서를 채우고, 작업 파일을 써서 node scripts/task.mjs start로 시작할 것');
  }catch(e){console.error('오류: '+e.message);process.exit(1);}

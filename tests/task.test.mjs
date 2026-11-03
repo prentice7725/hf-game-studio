@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
+import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,inScope,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
 const VERIFIES=['schema','dialogue','assets','screenshot','godot'];
@@ -118,6 +118,22 @@ test('narrative: 용어집은 검사 기준이라 범위 안에 못 두고, glos
  const p=plan({...g,glossary:'design/cast.md'},{repo});
  assert.match(p.acceptance_commands[0],/ --glossary design\/cast\.md --check$/);
  assert.ok(p.criteria_files.includes('design/cast.md'));
+});
+
+test('narrative: writer "none"은 작가 brief를 빼고, dtl_dir는 .dtl 비교(--compare)를 더한다',()=>{
+ const repo=repoWithDocs(),g=example('contract-intro-dialogue.json');
+ const p=plan({...g,writer:'none',dtl_dir:'dialogue'},{repo});
+ assert.equal(p.writer,undefined);
+ assert.equal(p.write_brief,undefined);
+ assert.match(p.acceptance_commands[0],/ --check --out-dir dialogue --compare$/);
+ assert.throws(()=>plan({...g,writer:'codex'},{repo}),/writer는 "none"만/);
+ assert.throws(()=>plan({...g,dtl_dir:''},{repo}),/dtl_dir는/);
+});
+
+test('inScope: 범위 안 파일 곁의 Godot .uid·.import는 같이 범위로 본다',()=>{
+ const allowed=['scripts/main.gd','assets/ash.png'];
+ assert.ok(inScope('scripts/main.gd.uid',allowed)&&inScope('assets/ash.png.import',allowed)&&inScope('scripts/main.gd',allowed));
+ assert.ok(!inScope('scripts/other.gd.uid',allowed)&&!inScope('project.godot',allowed));
 });
 
 test('art-image: asset_pipeline 필수, 매니페스트 검사는 파일별 --only, 리드에게 주는 MCP 절차',()=>{
@@ -323,7 +339,7 @@ test('verify: 작업 전부터 바뀌어 있던 파일은 더 바뀌었을 때�
  const {dir,env}=gameRepo(t),task=example('merc-data.json'),warnings=[];
  fs.writeFileSync(path.join(dir,'notes.md'),'before');
  start(task,{repo:dir,env,warn:m=>warnings.push(m)});
- assert.ok(warnings.some(w=>w.includes('작업 전에 바뀐 파일 1개')));
+ assert.ok(warnings.some(w=>w.includes('범위 밖의 커밋 안 된 변경 1개')&&w.includes('notes.md')),'리뷰 diff에 섞이니 먼저 커밋하라고 알린다');
  fs.mkdirSync(path.join(dir,'data'));fs.writeFileSync(path.join(dir,'data','mercenaries.json'),ASH);
  assert.equal(verify(task,{repo:dir,env}).ok,true,'그대로면 범위 밖이 아니다');
  fs.writeFileSync(path.join(dir,'notes.md'),'after');

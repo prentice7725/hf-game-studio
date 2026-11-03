@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // 엔진 중립 대사 JSON을 Dialogic 2 타임라인(.dtl)으로 바꾼다. 원본은 JSON이고 .dtl은 만들어지는 파일이다.
-// 사용법: node tools/hfgs/dialogue-to-dtl.mjs <대사.json> [...] [--out-dir <폴더>] [--schema <스키마>] [--glossary <용어집.md>] [--check]
+// 사용법: node tools/hfgs/dialogue-to-dtl.mjs <대사.json> [...] [--out-dir <폴더>] [--schema <스키마>] [--glossary <용어집.md>] [--check [--compare]]
 //   --out-dir   .dtl을 쓸 폴더(기본: 대사 파일과 같은 폴더). 파일 이름은 대사 id.dtl
 //   --schema    기본 design/schemas/dialogue.schema.json
 //   --glossary  기본 design/glossary.md. speaker·등장·퇴장 인물 ID가 용어집 표의 ID 열에 있어야 한다
 //   --check     파일을 쓰지 않고 검사만 한다(수용 검사용). 문제가 있으면 종료 코드 1
+//   --compare   --check와 함께: 이미 있는 .dtl이 지금 변환 결과와 같은지도 본다(없거나 다르면 실패). 낡은 .dtl을 잡는다
 // Dialogic 문법은 Dialogic 소스(Modules/Text/event_text.gd, Modules/Choice/event_choice.gd)를 따른다:
 //   텍스트 줄의 :는 \:로 쓰고, 줄 맨 앞의 \ 하나는 읽을 때 떼어 낸다. 그래서 텍스트 줄마다 \를 붙여 join·jump·-·# 같은
 //   키워드로 시작하는 대사가 다른 이벤트로 읽히지 않게 한다. [ ] { } < >는 Dialogic 효과·변수 문법이라 스키마가 막는다.
@@ -80,7 +81,7 @@ export function glossaryIds(text){
  return ids;
 }
 
-export function convert(files,{schema,glossary,outDir,check=false,read=f=>fs.readFileSync(f,'utf8'),write=(f,t)=>{fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f,t);}}){
+export function convert(files,{schema,glossary,outDir,check=false,compare=false,read=f=>fs.readFileSync(f,'utf8'),write=(f,t)=>{fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f,t);}}){
  const results=[];
  const ids=glossary===null?undefined:glossaryIds(read(glossary));
  const schemaDoc=JSON.parse(read(schema));
@@ -94,6 +95,13 @@ export function convert(files,{schema,glossary,outDir,check=false,read=f=>fs.rea
    r.out=path.join(outDir??path.dirname(file),`${doc.id}.dtl`);
    r.text=toDtl(doc,{source:file.replaceAll('\\','/')});
    if(!check)write(r.out,r.text);
+   else if(compare){
+    let have=null;
+    try{have=read(r.out);}catch{}
+    const shown=r.out.replaceAll('\\','/');
+    if(have===null)r.errors.push(`${shown}가 없음: --out-dir로 다시 만들 것`);
+    else if(have.replace(/\r\n/g,'\n')!==r.text)r.errors.push(`${shown}가 원본 JSON의 변환 결과와 다름(낡았거나 손으로 고침): 다시 만들 것`);
+   }
   }
   results.push(r);
  }
@@ -102,10 +110,11 @@ export function convert(files,{schema,glossary,outDir,check=false,read=f=>fs.rea
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  const args=process.argv.slice(2),files=[];
- let schema='design/schemas/dialogue.schema.json',glossary='design/glossary.md',outDir,check=false;
+ let schema='design/schemas/dialogue.schema.json',glossary='design/glossary.md',outDir,check=false,compare=false;
  for(let i=0;i<args.length;i++){
   const a=args[i];
   if(a==='--check')check=true;
+  else if(a==='--compare')compare=true;
   else if(['--out-dir','--schema','--glossary'].includes(a)){
    if(args[i+1]===undefined){console.error(`${a}에 값이 없음`);process.exit(2);}
    const v=args[++i];
@@ -113,9 +122,10 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   }else if(a.startsWith('--')){console.error(`알 수 없는 인자: ${a}`);process.exit(2);}
   else files.push(a);
  }
- if(!files.length){console.error('사용법: dialogue-to-dtl.mjs <대사.json> [...] [--out-dir 폴더] [--schema 파일] [--glossary 파일|none] [--check]');process.exit(2);}
+ if(!files.length){console.error('사용법: dialogue-to-dtl.mjs <대사.json> [...] [--out-dir 폴더] [--schema 파일] [--glossary 파일|none] [--check [--compare]]');process.exit(2);}
+ if(compare&&!check){console.error('--compare는 --check와 함께 쓸 것');process.exit(2);}
  let results;
- try{results=convert(files,{schema,glossary,outDir,check});}catch(e){console.error(e.code==='ENOENT'?`파일 없음: ${e.path}`:e.message);process.exit(2);}
+ try{results=convert(files,{schema,glossary,outDir,check,compare});}catch(e){console.error(e.code==='ENOENT'?`파일 없음: ${e.path}`:e.message);process.exit(2);}
  let failed=false;
  for(const r of results){
   for(const w of r.warnings)console.error(`경고 ${r.file}: ${w}`);

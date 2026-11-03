@@ -146,6 +146,14 @@ Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai
 
 쓰는 법은 `SKILL.md`의 Godot 본편 절에 있다. 평가 중 템플릿에서 하나 더 드러났다: Dialogic 2가 게임 실행 중 `InputMap action "dialogic_default_action" doesn't exist`를 매 프레임 찍는다(`subsystem_input.gd:148`). 헤드리스 `run` 검사는 `HFGS_READY`만 보므로 못 잡았다. 템플릿 `project.godot`에 그 액션을 넣거나 Dialogic 설정으로 끌지 결정해야 한다.
 
+**마일스톤 2 실측 (2026-11-03).** merc-guild의 Godot 이식(4작업)을 이 스킬로 돌려 마찰 18건을 모았고(merc-guild `design/milestone-2.md`), 다음을 반영했다.
+
+- 플레이테스트 드라이버를 손으로 짜야 했다 → `tools/godot-playtest.mjs`(시나리오 JSON: 누르기, 대사 넘기기, 선택지, 라벨 기대값, 스크린샷은 저장소 밖). 화면 기준을 수용 검사로 넣을 수 있다.
+- godot-ai 사용법이 문서와 달랐다(포트는 로그에 없음, 대사창은 `root_path: ".."`, 대사는 Enter, `project_run`은 `autosave:false`, `not_live`는 기다림) → `SKILL.md` 고침.
+- verify가 Godot의 `.uid`·`.import`를 범위 밖으로 막았다 → 범위 안 파일 곁의 것은 범위로 본다. 준비 단계 변경을 커밋하지 않고 시작하면 리뷰 diff가 오염됐다 → start가 범위 밖 미커밋 변경을 경고.
+- 검사 도구: 자동 로드를 모르는 `--check-only`는 실패 메시지에서 `get_node("/root/이름")`을 알려 주고, 에디터를 열어 둔 채 돌린 gdUnit4가 이상한 종료 코드로 죽으면 찍힌 결과를 쓴다. 대사 변환기에 `--compare`(낡은 `.dtl` 잡기)와 작업 파일 `dtl_dir`, 변환만 하는 글 작업의 `writer: "none"`.
+- setup: 있는 `.gitignore`에 템플릿 줄을 합치고(`reports/` 추가), `godot-addons.mjs`가 godot-ai도 깐다. consult는 용량 초과를 한 번 재시도한다.
+
 ## 애셋을 Godot으로
 
 - **정지 이미지(PNG):** 그대로 가져온다. 매니페스트의 크기·투명도 검사를 유지한다.
