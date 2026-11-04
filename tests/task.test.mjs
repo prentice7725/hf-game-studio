@@ -241,7 +241,8 @@ test('quote·slashPath·sections: 붙여 넣을 명령은 bash와 PowerShell 어
  assert.equal(quote('a b'),'"a b"');
  assert.equal(quote('AC1: 대사가 수락·거절 분기를 가진다'),'"AC1: 대사가 수락·거절 분기를 가진다"','큰따옴표로만 감싼다(JSON 이스케이프 없음)');
  assert.equal(quote('C:/work space/g'),'"C:/work space/g"');
- assert.equal(quote('say "hi"'),JSON.stringify('say "hi"'),'큰따옴표가 든 인자만 JSON 이스케이프로 물러난다');
+ assert.equal(quote('say "hi"'),'"say \\"hi\\""','큰따옴표가 든 인자는 bash 규칙대로 \\"');
+ assert.equal(quote('C:\\a b'),'"C:\\\\a b"');
  assert.equal(slashPath('C:\\workspace\\merc-guild'),'C:/workspace/merc-guild');
  assert.equal(slashPath('/home/u/g'),'/home/u/g');
  // 리뷰 명령: Windows 경로가 "C:\\\\workspace\\\\..."처럼 이중 이스케이프되면 git bash에 붙여 넣을 때 깨진다(마일스톤 1 실측).
@@ -382,8 +383,9 @@ test('godot-scene: schema·expect가 있으면 데이터 검사를 자동으로 
  assert.equal(p.acceptance_commands[1],'node tools/hfgs/godot-check.mjs all');
  assert.throws(()=>plan({...task,schema:undefined},{repo}),/expect에는 schema가 필요함/);
  // 셸이 확장할 글자는 원래 값으로 검사되지 않으므로 거절한다(Codex 리뷰 F1).
- for(const v of ['$HOME','a`b`','%USERNAME%'])assert.throws(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),/\$나 백틱/);
- assert.doesNotThrow(()=>plan({...task,expect:{'/mercenaries/0/name':'50% 할인'}},{repo}),'퍼센트 글자 하나는 확장되지 않는다');
+ for(const v of ['$HOME','a`b`'])assert.throws(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),/\$나 백틱/);
+ // 검사는 셸 없이 돌므로 cmd가 바꾸던 글자(&, %이름%)는 그대로 받는다.
+ for(const v of ['%USERNAME%','A&B','50% 할인'])assert.doesNotThrow(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),v);
  assert.throws(()=>plan({...task,scope:{paths:['scripts/main.gd']}},{repo}),/schema 검사 대상 JSON이 없음/);
 });
 
