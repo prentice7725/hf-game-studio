@@ -4,13 +4,14 @@
 //   review  변경을 다른 계열 모델에게 리뷰받는다. 작성자의 요약·주장은 주지 않고 diff, 바뀐 파일, 검사 결과만 준다.
 //   write   글(대사, 로어, 서술)을 작가 모델(기본 Gemini Argon)에게 맡긴다. 결과 글은 리드가 파일로 쓴다.
 //   dispose 리뷰 지적마다 리드의 처분(act, consider, noted, dismissed, contract_misread)과 이유를 남긴다.
+//           사람이 확인할 수용 기준은 사용자의 확인(AC5=confirmed, "AC5=rejected:이유")을 남긴다.
 //   stats   리뷰어별로 쓸모 있는 지적 비율을 본다.
 //
 // 사용법:
 //   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok] [--author-model M]
 //        [--criteria "AC1: ..."]... [--criteria-file F] [--check "<명령>"]... [--model M] [--effort E]
 //   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok] [--model M] [--effort E]
-//   node scripts/consult.mjs dispose <report.json> F1=act "F2=dismissed:이유" ...
+//   node scripts/consult.mjs dispose <report.json> F1=act "F2=dismissed:이유" "AC5=confirmed:확인 내용" ...
 //   node scripts/consult.mjs stats
 // 보고서는 HFGS_HOME(기본 ~/.hf-game-studio)/reviews/에 남는다. 게임 저장소 안에 쓰지 않는다.
 // 종료 코드: review는 pass면 0, 아니면 1. 사용법 오류·실행 실패는 2.
@@ -193,12 +194,24 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
 
 // 리드가 지적마다 처분을 남긴다. 기각과 계약 오독에는 이유가 필요하다.
 export const DISPOSITIONS=['act','consider','noted','dismissed','contract_misread'];
-export function dispose(report,entries){
+// 사람이 확인할 수용 기준(소리, 보이는 모양)은 리뷰어가 판정하지 못해 verdict가 decision으로 끝난다.
+// 사용자가 확인한 결과는 "AC5=confirmed:들어 봄"이나 "AC5=rejected:이유"로 같은 보고서에 남긴다.
+export const CONFIRMATIONS=['confirmed','rejected'];
+export function dispose(report,entries,{now=()=>new Date().toISOString()}={}){
  if(report.kind!=='review')fail('리뷰 보고서가 아님');
  const byId=new Map(report.findings.map(f=>[f.id,f]));
  for(const entry of entries){
+  const ac=/^(AC\d+)=([a-z_]+)(?::(.*))?$/s.exec(entry);
+  if(ac){
+   const [,id,status,note]=ac;
+   if(!(report.criteria??[]).some(c=>c.startsWith(id+':')))fail(`보고서의 수용 기준에 없는 기준: ${id}`);
+   if(!CONFIRMATIONS.includes(status))fail(`수용 기준의 사용자 확인은 ${CONFIRMATIONS.join(', ')} 중 하나: ${status}`);
+   if(status==='rejected'&&!str(note))fail(`${id}: rejected에는 이유가 필요함`);
+   report.confirmations={...(report.confirmations??{}),[id]:{status,by:'user',at:now(),...(str(note)?{note:note.trim()}:{})}};
+   continue;
+  }
   const m=/^(F\d+)=([a-z_]+)(?::(.*))?$/s.exec(entry);
-  if(!m)fail(`처분은 F1=act 또는 "F2=dismissed:이유" 형식: ${entry}`);
+  if(!m)fail(`처분은 F1=act, "F2=dismissed:이유", "AC5=confirmed:확인 내용" 형식: ${entry}`);
   const [,id,disposition,reason]=m,f=byId.get(id);
   if(!f)fail(`보고서에 없는 지적: ${id}`);
   if(!DISPOSITIONS.includes(disposition))fail(`처분은 ${DISPOSITIONS.join(', ')} 중 하나: ${disposition}`);

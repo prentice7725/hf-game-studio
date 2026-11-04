@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {runScenario,checkScenario,judgeExpect,matches} from '../tools/godot-playtest.mjs';
+import {runScenario,checkScenario,judgeExpect,judgeVisible,matches} from '../tools/godot-playtest.mjs';
 
 const rect=(x,y)=>({position:{x,y},size:{x:100,y:20}});
 // 대사 대본: 줄은 Enter로, 선택지는 클릭으로 넘어간다. 끝나면 대사창이 사라지고 라벨이 바뀐다.
@@ -15,7 +15,9 @@ function fakeGame({script,onEnd}){
   const out=[
    {name:'TalkButton',path:'/Main/TalkButton',type:'Button',text:'이야기하기',visible:true,disabled:talking,global_rect:rect(0,0)},
    {name:'GoldLabel',path:'/Main/GoldLabel',type:'Label',text:state.gold,visible:true,global_rect:rect(0,30)},
-   {name:'ResultLabel',path:'/Main/ResultLabel',type:'Label',text:state.result,visible:true,global_rect:rect(0,60)}];
+   {name:'ResultLabel',path:'/Main/ResultLabel',type:'Label',text:state.result,visible:true,global_rect:rect(0,60)},
+   {name:'Portrait',path:'/Main/Portrait',type:'TextureRect',visible:true,global_rect:rect(0,200)},
+   {name:'Sprite',path:'/Main/Sprite',type:'TextureRect',visible:true,global_rect:{position:{x:0,y:300},size:{x:0,y:0}}}];
   if(talking){
    const s=script[at];
    if(s.line)out.push({name:'Text',path:'/Main/../Layout/Text',type:'RichTextLabel',text:s.line,visible:true,global_rect:rect(0,100)});
@@ -52,7 +54,7 @@ test('runScenario: 누르고, Enter로 넘기고, 선택지를 고르고, 라벨
  const shots=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-pt-'));
  t.after(()=>fs.rmSync(shots,{recursive:true,force:true}));
  const game=fakeGame({script:SCRIPT,onEnd:s=>{if(s.picked.includes('받는다')){s.gold='금화 60';s.result='성공';}}});
- const r=await run(game,{name:'accept',steps:[{click:'이야기하기'},{dialogue:['받는다']},{expect:{GoldLabel:'금화 60',ResultLabel:{match:'성공'}}},{shot:'end'}]},{shots});
+ const r=await run(game,{name:'accept',steps:[{visible:'Portrait'},{click:'이야기하기'},{dialogue:['받는다']},{expect:{GoldLabel:'금화 60',ResultLabel:{match:'성공'}}},{shot:'end'}]},{shots});
  assert.deepEqual(r,{ok:true,problems:[]});
  assert.deepEqual(game.calls.find(c=>c[0]==='project_run')[1],{mode:'main',autosave:false},'장면을 저장하지 않고 실행');
  assert.ok(game.calls.some(c=>c[0]==='game_manage'&&c[1].op==='input_key'&&c[1].params.key==='Enter'));
@@ -68,6 +70,8 @@ test('runScenario: 없는 선택지, 남은 선택지, 다른 라벨, 없는 버
  assert.match((await run(fakeGame({script:SCRIPT,onEnd:end}),{name:'x',steps:[{click:'이야기하기'},{dialogue:['넘긴다']},{expect:{GoldLabel:'금화 60'}}]})).problems[0],/기대와 다름/);
  assert.match((await run(fakeGame({script:SCRIPT,onEnd:end}),{name:'x',steps:[{click:'받기'}]})).problems[0],/누를 컨트롤 없음: 받기/);
  assert.match((await run(fakeGame({script:SCRIPT,onEnd:end}),{name:'x',steps:[{dialogue:[]}]})).problems[0],/대사창이 열리지 않음/);
+ // 그림이 없는 TextureRect(크기 0)와 없는 노드는 보이지 않는 것으로 본다.
+ assert.match((await run(fakeGame({script:SCRIPT,onEnd:end}),{name:'x',steps:[{visible:['Portrait','Sprite','Badge']}]})).problems[0],/보이지 않음: Sprite, Badge/);
  // 스크린샷 응답에 이미지가 없으면 실패(Codex 리뷰 F2).
  const noImage=fakeGame({script:SCRIPT,onEnd:end}),orig=noImage.call;
  const call=async(n,a)=>n==='editor_screenshot'?{text:'{}'}:orig(n,a);
@@ -86,5 +90,9 @@ test('checkScenario·judgeExpect: 형식, 배열은 그중 하나',()=>{
  assert.equal(judgeExpect([{GoldLabel:'금화 60'},{GoldLabel:'금화 0',ResultLabel:{match:'^실패'}}],els).ok,true);
  assert.equal(judgeExpect({GoldLabel:'금화 60'},els).ok,false);
  assert.equal(matches('',''),true);
+ for(const bad of [{visible:''},{visible:[]},{visible:[3]},{visible:[['Portrait']]}])
+  assert.throws(()=>checkScenario({name:'a',steps:[bad]}),/visible/,JSON.stringify(bad));
+ assert.deepEqual(judgeVisible('Portrait',[{name:'Portrait',visible:false,global_rect:rect(0,0)}]),{ok:false,missing:['Portrait']});
+ assert.deepEqual(judgeVisible(['Portrait'],[{name:'Portrait',global_rect:rect(0,0)}]),{ok:true,missing:[]});
  assert.throws(()=>matches(3,'3'),/expect 값은/);
 });

@@ -146,7 +146,8 @@
       "verify": "godot",
       "rules": [
         "Scenes read game state from scripts/ and never compute rules themselves.",
-        "Put only approved assets into scenes; placeholders until the user approves."
+        "Put only approved assets into scenes; placeholders until the user approves.",
+        "Test what the player gets through node state (texture, visible, playing, text), never through counters or flags added only so a test can read them."
       ]
     },
     "code": {

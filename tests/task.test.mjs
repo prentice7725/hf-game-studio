@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {plan,start,check,verify,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,inScope,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
+import {plan,start,check,verify,hold,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,inScope,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
 const VERIFIES=['schema','dialogue','assets','screenshot','godot'];
@@ -370,4 +370,46 @@ test('godot-code: godot-check all이 자동 검사, Godot 템플릿의 contract_
  const sub=plan({...example('contract-rules-godot.json'),godot_project:'godot'},{repo});
  assert.deepEqual(sub.acceptance_commands,['node tools/hfgs/godot-check.mjs all --project godot']);
  assert.equal(loadKinds().kinds['godot-scene'].verify,'godot');
+});
+
+test('godot-scene: schema·expect가 있으면 데이터 검사를 자동으로 만들고, test/ 아래 시나리오 JSON은 데이터로 보지 않는다',()=>{
+ const repo=repoWithDocs();
+ const task={task_id:'board',kind:'godot-scene',objective:'x',success_criteria:['AC1: x'],
+  scope:{paths:['scripts/main.gd','data/mercenaries.json','test/playtest/accept.json']},
+  schema:'design/schemas/mercenaries.schema.json',expect:{'/mercenaries/0/portrait':'assets/portraits/merc-ash.png'}};
+ const p=plan(task,{repo});
+ assert.equal(p.acceptance_commands[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/0/portrait=\\"assets/portraits/merc-ash.png\\""');
+ assert.equal(p.acceptance_commands[1],'node tools/hfgs/godot-check.mjs all');
+ assert.throws(()=>plan({...task,schema:undefined},{repo}),/expect에는 schema가 필요함/);
+ // 셸이 확장할 글자는 원래 값으로 검사되지 않으므로 거절한다(Codex 리뷰 F1).
+ for(const v of ['$HOME','a`b`','%USERNAME%'])assert.throws(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),/\$나 백틱/);
+ assert.doesNotThrow(()=>plan({...task,expect:{'/mercenaries/0/name':'50% 할인'}},{repo}),'퍼센트 글자 하나는 확장되지 않는다');
+ assert.throws(()=>plan({...task,scope:{paths:['scripts/main.gd']}},{repo}),/schema 검사 대상 JSON이 없음/);
+});
+
+test('hold: 막힌 작업을 보류로 남기고, verify·start는 --restart 전까지 거절한다',t=>{
+ const {dir,env}=gameRepo(t),task=example('merc-data.json');
+ assert.throws(()=>hold(task,{reason:'x',env}),/시작 기록이 없음/);
+ start(task,{repo:dir,env});
+ assert.throws(()=>hold(task,{env}),/--reason/);
+ const {state}=hold(task,{reason:'asset-pipeline 생성 크기 버그',env});
+ assert.equal(state.held.reason,'asset-pipeline 생성 크기 버그');
+ assert.throws(()=>start(task,{repo:dir,env}),/보류한 작업\(asset-pipeline 생성 크기 버그/);
+ assert.throws(()=>verify(task,{repo:dir,env}),/보류한 작업/);
+ assert.equal(start(task,{repo:dir,env,restart:true}).state.held,undefined);
+});
+
+test('verify --base: 리뷰 기준을 시작 커밋 뒤의 커밋으로 바꾸고, 이어지지 않은 커밋은 거절한다',t=>{
+ const {dir,git,env}=gameRepo(t),task=example('merc-data.json');
+ const first=git('rev-parse','HEAD').toString().trim();
+ fs.writeFileSync(path.join(dir,'prep.md'),'prep\n');git('add','.');git('commit','-q','-m','prep');
+ const {state}=start(task,{repo:dir,env});
+ fs.writeFileSync(path.join(dir,'tools','hfgs','note.md'),'x\n');git('add','.');git('commit','-q','-m','tools');
+ const tools=git('rev-parse','HEAD').toString().trim();
+ fs.mkdirSync(path.join(dir,'data'));fs.writeFileSync(path.join(dir,'data','mercenaries.json'),ASH);
+ assert.match(verify(task,{repo:dir,env}).review_command,new RegExp(`--base ${state.head}`));
+ assert.match(verify(task,{repo:dir,env,base:'HEAD'}).review_command,new RegExp(`--base ${tools}`));
+ // 시작 커밋보다 앞선 커밋을 주면 리뷰 diff에 작업과 무관한 변경(prep.md)이 섞인다.
+ assert.throws(()=>verify(task,{repo:dir,env,base:first}),/시작 커밋.*이어진 커밋이 아님/);
+ assert.throws(()=>verify(task,{repo:dir,env,base:'nope'}),/rev-parse/);
 });

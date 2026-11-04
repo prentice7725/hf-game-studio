@@ -42,7 +42,8 @@ node tools/hfgs/godot-check.mjs all        # syntax + test + run
 ```
 
 - `syntax`의 `--check-only`는 자동 로드 싱글턴을 모릅니다. 코드에서 `Dialogic.start()` 대신 `get_node("/root/Dialogic").start()`처럼 씁니다.
-- 같은 프로젝트를 에디터로 열어 둔 채 `test`를 돌리면 Godot이 종료하다 죽습니다(0xC0000005). 검사 도구가 gdUnit4가 찍은 결과를 쓰지만, verify 전에는 에디터를 닫는 편이 안전합니다.
+- 같은 프로젝트를 에디터로 열어 둔 채 `test`를 돌리면 Godot이 종료하다 죽을 수 있습니다(마일스톤 2에서 0xC0000005, 마일스톤 3에서는 재현 안 됨). 검사 도구가 gdUnit4가 찍은 결과를 쓰지만, 플레이테스트가 없는 작업은 verify 전에 에디터를 닫는 편이 안전합니다.
+- 템플릿을 깔고 애드온을 받은 뒤 에디터를 한 번 열어 닫고, 에디터가 저장한 형태(`.uid` 파일, `scenes/main.tscn`의 uid 등)를 준비 커밋에 넣습니다. uid는 프로젝트마다 달라 템플릿에 넣을 수 없고, 커밋하지 않으면 에디터로 실행할 때마다 장면이 다시 저장되어 작업의 범위 밖 변경이 됩니다.
 
 대사를 바꿨으면 변환부터 합니다: `node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/*.json --out-dir dialogue`. 화자 ID와 같은 이름의 Dialogic 캐릭터 파일(`.dch`)은 에디터에서 만듭니다(사람이 캐릭터 편집기로, 또는 리드가 godot-ai `resource_manage create`로). 에디터를 열면 Dialogic이 `project.godot`의 `dtl_directory`를 채우고 `.dtl.uid`를 만드니 대사 작업의 범위에 `project.godot`을 넣습니다.
 
@@ -51,11 +52,12 @@ node tools/hfgs/godot-check.mjs all        # syntax + test + run
 에디터가 godot-ai와 함께 떠 있으면 시나리오대로 게임을 돌려 라벨을 확인합니다. 화면 기준을 수용 검사로 만드는 용도입니다.
 
 ```bash
-node tools/hfgs/godot-playtest.mjs test/playtest/accept.json --port 8000 --ws-port 9500
+GODOT_AI_PORT=8000 GODOT_AI_WS_PORT=9500 node tools/hfgs/godot-playtest.mjs test/playtest/accept.json
 ```
 
 ```json
 {"name":"accept","steps":[
+ {"visible":["Portrait"]},
  {"click":"이야기하기"},
  {"dialogue":["보수부터 듣는다","받는다"]},
  {"expect":[{"GoldLabel":"금화 60","ResultLabel":{"match":"성공"}},{"GoldLabel":"금화 0","ResultLabel":{"match":"실패"}}]},
@@ -63,7 +65,7 @@ node tools/hfgs/godot-playtest.mjs test/playtest/accept.json --port 8000 --ws-po
 ]}
 ```
 
-`expect`는 노드 이름별 글자이고, 배열이면 그중 하나가 맞으면 통과합니다(무작위 판정용). 스크린샷은 저장소 밖(`~/.hf-game-studio/playtest/`)에 남깁니다.
+포트는 에디터가 띄운 godot-ai 서버의 것이고 기계마다 다르므로 수용 명령에 박지 않고 `GODOT_AI_PORT`·`GODOT_AI_WS_PORT` 환경변수로 줍니다(`--port`·`--ws-port`로도 됨, 없으면 8000/9500). `expect`는 노드 이름별 글자이고, 배열이면 그중 하나가 맞으면 통과합니다(무작위 판정용). `visible`은 그 이름의 컨트롤이 보이고 크기가 0이 아닌지 봅니다(그림 없는 TextureRect는 크기 0). 스크린샷은 저장소 밖(`~/.hf-game-studio/playtest/`)에 남깁니다.
 
 ## 규칙
 

@@ -137,6 +137,18 @@ test('dispose와 stats: 기각에는 이유가 필요하고, 쓸모 있는 지�
  assert.deepEqual(row,{reviewer:'codex gpt-6.1-sol',reports:1,findings:3,disposed:3,actionable:2,actionable_rate:0.67});
 });
 
+test('dispose: 사람이 확인할 수용 기준은 AC=confirmed|rejected로 같은 보고서에 남긴다',()=>{
+ const report={kind:'review',verdict:'decision',criteria:['AC1: tests pass','AC5: the sword swing is heard'],findings:[{id:'F1'}]};
+ const now=()=>'2026-11-03T00:00:00.000Z';
+ const d=dispose(structuredClone(report),['AC5=confirmed:실행해서 들어 봄','F1=noted'],{now});
+ assert.deepEqual(d.confirmations,{AC5:{status:'confirmed',by:'user',at:'2026-11-03T00:00:00.000Z',note:'실행해서 들어 봄'}});
+ assert.equal(d.findings[0].disposition,'noted');
+ assert.throws(()=>dispose(structuredClone(report),['AC9=confirmed']),/수용 기준에 없는 기준: AC9/);
+ assert.throws(()=>dispose(structuredClone(report),['AC5=maybe']),/confirmed, rejected/);
+ assert.throws(()=>dispose(structuredClone(report),['AC5=rejected']),/이유가 필요함/);
+ assert.equal(dispose(structuredClone(report),['AC5=rejected:안 들림'],{now}).confirmations.AC5.status,'rejected');
+});
+
 test('review: 이미 있던 새 파일을 고쳐도 저장소가 바뀐 것으로 본다',()=>{
  const dir=repo();
  const invoke=()=>{fs.writeFileSync(path.join(dir,'b.js'),'export const mp=99;\n');return {result:ok};};

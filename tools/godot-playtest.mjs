@@ -9,6 +9,7 @@
 //   {"click":"이야기하기"}               글자나 노드 이름이 같은, 보이고 눌리는 컨트롤을 누른다
 //   {"dialogue":["보수부터 듣는다","받는다"]}  대사가 끝날 때까지 Enter로 넘기고, 선택지가 나오면 이 목록을 차례로 고른다
 //   {"expect":{"GoldLabel":"금화 60","ResultLabel":{"match":"성공"}}}  노드 이름별 글자. 배열이면 그중 하나가 맞으면 통과
+//   {"visible":["Portrait"]}               노드 이름별로, 보이고(visible) 크기가 0이 아닌 컨트롤이 있어야 한다(그림이 들어간 TextureRect 등). 글자 하나면 그 이름 하나
 //   {"shot":"end"}                         게임 화면을 <shots>/<name>-end.png로 남긴다(사람이 보는 용도)
 // 대사창은 현재 장면 밖(루트)에 붙으므로 get_ui_elements를 root_path ".."로 부르고, 경로에 "/../"가 든 요소를 대사창으로 본다.
 // Dialogic은 input_action으로는 넘어가지 않고 같은 액션에 묶인 Enter 키로 넘어간다. project_run은 autosave:false로 부른다(장면이 저장되어 범위 밖 변경이 생김).
@@ -62,7 +63,11 @@ export function checkScenario(s){
  if(!/^[A-Za-z0-9_-]+$/.test(s.name??''))throw Error('시나리오 name은 영문·숫자·_-');
  for(const [i,st] of s.steps.entries()){
   const keys=Object.keys(st??{});
-  if(keys.length!==1||!['click','dialogue','expect','shot'].includes(keys[0]))throw Error(`steps[${i}]: click, dialogue, expect, shot 중 하나만`);
+  if(keys.length!==1||!['click','dialogue','expect','visible','shot'].includes(keys[0]))throw Error(`steps[${i}]: click, dialogue, expect, visible, shot 중 하나만`);
+  if(keys[0]==='visible'){
+   const names=[st.visible].flat();
+   if(!names.length||!names.every(n=>typeof n==='string'&&n.trim()))throw Error(`steps[${i}]: visible은 노드 이름이나 이름 배열(비어 있지 않음)`);
+  }
   if(keys[0]==='dialogue'&&!(Array.isArray(st.dialogue)&&st.dialogue.every(x=>typeof x==='string')))throw Error(`steps[${i}]: dialogue는 고를 선택지 글자 배열(없으면 [])`);
   if((keys[0]==='click'||keys[0]==='shot')&&!(typeof st[keys[0]]==='string'&&st[keys[0]].trim()))throw Error(`steps[${i}]: ${keys[0]}은 비어 있지 않은 글자`);
   if(keys[0]==='shot'&&!/^[A-Za-z0-9_-]+$/.test(st.shot))throw Error(`steps[${i}]: shot 이름은 영문·숫자·_-`);
@@ -87,6 +92,12 @@ export function matches(want,got){
  if(typeof want==='string')return got===want;
  if(want&&typeof want.match==='string')return typeof got==='string'&&new RegExp(want.match).test(got);
  throw Error(`expect 값은 문자열이나 {"match":"정규식"}: ${JSON.stringify(want)}`);
+}
+// 보이는 컨트롤: 이름이 같고, visible이 false가 아니고, 화면에서 차지하는 크기가 있다. TextureRect는 그림이 없으면 크기가 0이 된다.
+export function judgeVisible(names,elements){
+ const shown=n=>elements.some(e=>e.name===n&&e.visible!==false&&e.global_rect?.size?.x>0&&e.global_rect?.size?.y>0);
+ const missing=[names].flat().filter(n=>!shown(n));
+ return {ok:!missing.length,missing};
 }
 export function judgeExpect(expect,elements){
  const text=name=>elements.find(e=>e.name===name)?.text;
@@ -152,6 +163,11 @@ export async function runScenario(scenario,{call,log=console.log,sleep=sleepMs,s
    const r=judgeExpect(step.expect,els);
    log(`${r.ok?'맞음':'다름'}: ${JSON.stringify(r.seen)}`);
    if(!r.ok){problems.push(`기대와 다름: ${JSON.stringify(r.seen)} (기대 ${JSON.stringify(step.expect)})`);break;}
+  }else if(step.visible){
+   await sleep(wait);els=await ui();
+   const r=judgeVisible(step.visible,els);
+   log(`${r.ok?'보임':'안 보임'}: ${[step.visible].flat().join(', ')}`);
+   if(!r.ok){problems.push(`보이지 않음: ${r.missing.join(', ')}`);break;}
   }else if(step.shot){
    const {image}=await call('editor_screenshot',{source:'game',max_resolution:960});
    if(!image){problems.push(`스크린샷을 받지 못함: ${step.shot}`);break;}

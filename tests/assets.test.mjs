@@ -59,6 +59,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(run.left-->0)return tool(msg.id,{run_id:args.run_id,status:run.left%2?'STARTING':'RUNNING',outputs:[]});
   const ext=process.env.FAKE_EXT??'.png',out=path.join(dir,args.run_id+ext),other=path.join(dir,args.run_id+'.flac');
   fs.copyFileSync(path.join(dir,'sample'+ext),out);fs.writeFileSync(other,'x');
+  if(process.env.FAKE_RAW){fs.mkdirSync(path.join(dir,'010_generation'),{recursive:true});fs.writeFileSync(path.join(dir,'010_generation','gen_00001_.png'),'raw-'+args.run_id);}
   if(process.env.FAKE_RUN==='FAILED')return tool(msg.id,{run_id:args.run_id,status:'FAILED',engine_status:'FAILED',outputs:[out],error:'Pixel Gate FAILED: 17951 colors',qa:[{step:'pixel_gate',status:'FAILED'}]});
   return tool(msg.id,{run_id:args.run_id,status:'REVIEW_REQUIRED',engine_status:'CANDIDATE_READY_REVIEW_REQUIRED',outputs:[other,out],review_items:['CANDIDATE_READY_REVIEW_REQUIRED'],qa:[],game_ready:false,manifest:path.join(dir,'run_manifest.json')});
  }
@@ -145,6 +146,10 @@ test('target·briefArgs·prepareBrief: 매니페스트의 prompt가 brief가 되
  assert.deepEqual(prepareBrief(base,image,ti.spec).constraints,{resolution:[256,256],transparency:true,max_file_kb:512,palette:[],silhouette:null,style:null});
  assert.deepEqual(prepareBrief(base,image,{...ti.spec,alpha:false,max_kb:undefined}).constraints,{resolution:[256,256],transparency:null,palette:[],silhouette:null,style:null});
  assert.ok(!('constraints' in prepareBrief({},sfx,ts.spec)),'SFX에는 이미지 규격을 넣지 않는다');
+ // PIXEL_STATIC은 생성 크기를 주지 않는다(128로 바로 그리면 노이즈). 알파·용량은 그대로 넘긴다.
+ const pixel={...image,asset_pipeline:{...image.asset_pipeline,output_class:'PIXEL_STATIC'}};
+ assert.deepEqual(prepareBrief(base,pixel,ti.spec).constraints,{transparency:true,max_file_kb:512,palette:[],silhouette:null,style:null});
+ assert.ok(!('resolution' in prepareBrief({constraints:{resolution:[128,128]}},pixel,ti.spec).constraints),'brief에 있던 생성 크기도 지운다(Codex 리뷰 F2)');
 });
 
 test('target: prompt 없는 항목, 매니페스트에 없는 파일, 형식이 다른 output_class, 파일 둘은 거절',t=>{
@@ -194,6 +199,16 @@ test('generate: 후보 2개를 seed 순서대로 만들고, STARTING·RUNNING을
  const again=await withClient(server,client=>generate(task,{repo:dir,client,env,...quick}));
  assert.deepEqual(again.note.candidates.map(c=>c.n),[1,2,3]);
  assert.equal(again.note.candidates[2].seed,null);
+});
+
+test('generate: 이미지 후보 곁에 생성 단계 원본(010_generation)을 -raw로 남긴다',async t=>{
+ const {dir,env}=repo(t),{server}=fake(t,{env:{FAKE_RAW:'1'}});
+ const task=example('merc-portrait-pipeline.json'),logs=[];
+ const {note}=await withClient(server,client=>generate(task,{repo:dir,client,env,log:m=>logs.push(m),...quick}));
+ const [c]=note.candidates;
+ assert.match(c.raw,/01-0+1-raw\.png$/);
+ assert.equal(fs.readFileSync(c.raw,'utf8'),'raw-'+c.run_id);
+ assert.match(logs.join('\n'),/생성 원본/);
 });
 
 test('generate: SFX는 wav 변환본을 후보로 삼고 매니페스트의 길이·채널 규격을 검사한다',async t=>{
