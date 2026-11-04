@@ -42,8 +42,9 @@ export function roleDirectives(role,root=STUDIO_ROOT){
 
 // 셸에 붙여 넣는 명령의 인자. 그냥 써도 되는 글자만이면 그대로, 아니면 큰따옴표로만 감싼다.
 // JSON.stringify로 감싸면 Windows 경로의 역슬래시가 두 번 이스케이프돼(C:\\\\workspace) bash(git bash)에 붙여 넣으면 깨진다(마일스톤 1 실측).
-// 큰따옴표·역슬래시·$·백틱이 든 인자만 JSON 이스케이프로 물러난다(이 경우는 bash에서만 안전하다).
-export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:/["\\$`]/.test(s)?JSON.stringify(s):`"${s}"`;
+// 큰따옴표·역슬래시·$·백틱이 든 인자만 bash 큰따옴표 규칙대로 그 네 글자 앞에 \를 붙인다. 수용 검사 실행기(lib/checks.mjs)가
+// 같은 규칙으로 되돌리므로 줄바꿈·탭 같은 제어 문자도 그대로 왕복한다(JSON 이스케이프는 \n으로 바꿔 버린다).
+export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:`"${s.replace(/["\\$`]/g,'\\$&')}"`;
 // 경로는 슬래시로 통일한다. Windows도 슬래시 경로를 받고, bash와 PowerShell 어디에 붙여 넣어도 그대로 돈다.
 export const slashPath=s=>s.replace(/\\/g,'/');
 
@@ -141,11 +142,12 @@ export function pipelineDirectives(p,{classes=[],repo=process.cwd(),scope=[],edi
 // 매니페스트 검사 대상: asset_files가 없으면 scope.paths 중 검사 도구가 읽을 수 있는 PNG·WAV.
 const assetFiles=input=>input.asset_files??input.scope.paths.filter(p=>/\.(png|wav)$/i.test(p));
 const jsonFiles=input=>input.data_files??input.scope.paths.filter(p=>p.endsWith('.json'));
-// 수용 명령은 셸로 돈다. 큰따옴표 안에서도 bash는 $·백틱을, Windows cmd는 %이름%을 확장하므로 그런 값은 원래 글자로 검사되지 않는다. 미리 거절한다.
+// 수용 명령은 셸 없이 돌지만(lib/checks.mjs) verify가 내는 리뷰 명령은 리드가 bash에 붙여 넣는다.
+// 큰따옴표 안에서도 bash는 $·백틱을 확장해 리뷰어가 받는 --check가 달라지므로 그런 값은 미리 거절한다.
 const expectArgs=input=>Object.entries(input.expect??{}).flatMap(([p,v])=>{
  if(!p.startsWith('/'))fail(`expect의 경로는 /로 시작해야 함: ${p}`);
  const arg=`${p}=${JSON.stringify(v)}`;
- if(/[$`]|%[^%\s]+%/.test(arg))fail(`expect에 $나 백틱, %이름%은 쓸 수 없음(셸이 확장함): ${p}`);
+ if(/[$`]/.test(arg))fail(`expect에 $나 백틱은 쓸 수 없음(붙여 넣는 셸이 확장함): ${p}`);
  return ['--expect',arg];
 });
 

@@ -154,6 +154,8 @@ Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai
 - 검사 도구: 자동 로드를 모르는 `--check-only`는 실패 메시지에서 `get_node("/root/이름")`을 알려 주고, 에디터를 열어 둔 채 돌린 gdUnit4가 이상한 종료 코드로 죽으면 찍힌 결과를 쓴다. 대사 변환기에 `--compare`(낡은 `.dtl` 잡기)와 작업 파일 `dtl_dir`, 변환만 하는 글 작업의 `writer: "none"`.
 - setup: 있는 `.gitignore`에 템플릿 줄을 합치고(`reports/` 추가), `godot-addons.mjs`가 godot-ai도 깐다. consult는 용량 초과를 한 번 재시도한다.
 
+**수용 검사를 셸 없이 (2026-11-04).** 마일스톤 3 리뷰에서 Windows cmd.exe가 `--expect "/p=\"A&B\""`의 `&`를 명령 구분자로 읽는다는 지적이 나왔다(`quote`가 만드는 `\"`는 bash 규칙이라 cmd는 모른다). `lib/checks.mjs`가 명령을 bash 따옴표 규칙대로 나눠 `shell:false`로 돌리고, `node`·`npm`·`npx`는 지금 도는 node로 실행한다(npm.cmd는 진입점을 변수로 고르는 배치 파일이라 풀 수 없다). 셸로 도는 것은 셸 문법이 있는 명령(따옴표 밖의 파이프·리다이렉트·`&&`·줄바꿈·글롭·`$`, 큰따옴표 안이라도 이스케이프되지 않은 `$`·백틱, 따옴표 밖의 `#` 주석, 따옴표 밖 역슬래시 뒤의 공백·따옴표처럼 bash 이스케이프로 읽히는 것)과 실행 파일을 못 찾는 명령(셸 내장 명령, 진입점을 풀 수 없는 배치 래퍼)뿐이다. `expect`의 `$`·백틱 거절은 남겼다. verify가 내는 리뷰 명령을 리드가 bash에 붙여 넣으면 확장되기 때문이다. 같은 이유로 큰따옴표가 든 인자를 담은 리뷰 명령은 bash 전용이다(PowerShell은 `\"`를 모른다).
+
 **마일스톤 3 실측 (2026-11-03).** 승인한 애셋을 Godot 장면에 넣는 마일스톤(2작업)을 돌려 마찰 12건을 모았고(merc-guild `design/milestone-3.md`), 다음을 반영했다. 초상화·효과음 작업은 끝났고, 픽셀 스프라이트 작업은 asset-pipeline의 생성 크기 문제로 보류 중이다.
 
 - asset-pipeline이 매니페스트 크기(128×128)를 생성 크기로 써서 픽셀 워크플로가 색 덩어리를 냈다 → `prepareBrief`가 `PIXEL_STATIC`에는 `resolution`을 넘기지 않는다(축소는 리드가 `pick --from`). asset-pipeline 쪽 수정도 필요하다.

@@ -28,7 +28,7 @@ scripts/
   lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
     cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
     adapters/              codex(리뷰, 기본 Sol), agy(글쓰기·리뷰, 기본 Gemini Argon high), grok(리뷰)
-    checks.mjs             수용 검사 명령 실행(task.mjs와 consult.mjs가 같이 씀)
+    checks.mjs             수용 검사 명령 실행(셸 없이 인자 배열로, task.mjs와 consult.mjs가 같이 씀)
     redaction.mjs          보내는 프롬프트의 비밀값·개인정보 가리기
     env.mjs, platform.mjs  CLI에 넘길 환경변수 제한, 실행 파일 찾기와 Windows 명령줄 길이
 tools/                     게임 저장소의 tools/hfgs/로 복사되는 수용 검사 도구
@@ -92,7 +92,7 @@ node ~/.claude/skills/hf-game-studio/scripts/task.mjs start tasks/merc-data.json
 node ~/.claude/skills/hf-game-studio/scripts/task.mjs verify tasks/merc-data.json --repo .
 ```
 
-verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 작업 도중 준비 변경을 따로 커밋했으면 `verify --base <준비 커밋>`으로 리뷰 기준을 옮깁니다(시작 커밋에서 이어진 커밋만 받습니다). 경로는 슬래시로, 공백이 있는 인자는 큰따옴표로만 감싸므로 Windows에서도 bash(git bash)와 PowerShell 어디에든 그대로 붙여 넣을 수 있습니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
+verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 작업 도중 준비 변경을 따로 커밋했으면 `verify --base <준비 커밋>`으로 리뷰 기준을 옮깁니다(시작 커밋에서 이어진 커밋만 받습니다). 경로는 슬래시로, 공백이 있는 인자는 큰따옴표로만 감싸므로 보통은 bash(git bash)와 PowerShell 어디에든 그대로 붙여 넣을 수 있습니다. 다만 큰따옴표·역슬래시가 든 인자(글자 값을 기대하는 `--expect` 등)는 bash 규칙(`\"`)으로 이스케이프하므로 리뷰 명령은 bash에 붙여 넣습니다. PowerShell은 역슬래시를 이스케이프로 보지 않습니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
 
 ### 작업 파일
 
@@ -190,6 +190,7 @@ GODOT_AI_PORT=8001 GODOT_AI_WS_PORT=9501 node tools/hfgs/godot-playtest.mjs test
 - **범위 검사.** `verify`는 작업 전과 비교해 바뀐 파일이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있어야 통과합니다. 작업 전부터 바뀌어 있던 파일은 내용이 더 바뀌었을 때만 이 작업의 변경으로 봅니다.
 - **섹션 단위 읽기.** 설계 문서가 커질수록 통째로 읽는 비용이 빠르게 늘고, Read 한도(약 2.5만 토큰)를 넘으면 실패합니다(원본 템플릿 [#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64), [#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). `context_sections`에 섹션을 적으면 plan이 줄 범위를 찾아 그 범위만 읽게 하고, 40KB가 넘는 문서는 섹션을 안 적어도 통째로 읽지 않게 합니다. 작가 brief에도 같은 지시가 들어갑니다.
 - **효과는 노드 상태로 검사합니다.** 소리를 틀었는지는 테스트용 카운터가 아니라 `AudioStreamPlayer.playing`으로, 그림은 `texture`와 보임으로 봅니다(godot-scene 규칙). 마일스톤 3에서 리뷰어가 카운터만 보는 테스트를 잡았습니다.
+- **검사는 셸 없이 돕니다.** 수용 명령 문자열을 bash 따옴표 규칙대로 인자로 나눠 바로 실행합니다. Windows의 cmd.exe는 큰따옴표 안의 `\"`를 모르고 `%이름%`을 확장해서, `--expect "/p=\"A&B\""` 같은 기대값이 쪼개지거나 바뀌었습니다. 앞에 붙인 `NAME=값`은 환경변수가 됩니다. 셸로 도는 명령은 셸 문법이 있는 명령(따옴표 밖의 파이프·리다이렉트·`&&`·줄바꿈·글롭·`$`, 큰따옴표 안이라도 이스케이프되지 않은 `$`·백틱, 따옴표 밖의 `#` 주석, 따옴표 밖 역슬래시 뒤의 공백·따옴표처럼 bash 이스케이프로 읽히는 것)과 실행 파일을 못 찾는 명령(셸 내장 명령, 진입점을 풀 수 없는 배치 래퍼)뿐입니다.
 - **리뷰어는 결론을 받지 않습니다.** `consult.mjs review`는 작성자의 요약·테스트 주장을 리뷰어에게 주지 않고, diff·바뀐 파일·스크립트가 직접 돌린 검사 결과만 줍니다. 호출 전후 작업 트리를 비교해 전문가가 파일을 바꿨으면 답을 버립니다.
 
 ## 주의
