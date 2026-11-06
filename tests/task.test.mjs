@@ -6,7 +6,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {plan,start,check,verify,hold,acTable,pipelineDirectives,loadKinds,roleDirectives,quote,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,inScope,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
+import {plan,start,check,verify,hold,acTable,pipelineDirectives,loadKinds,roleDirectives,slashPath,reviewCommand,sections,dirtyPaths,hashFiles,inScope,stateFile,LARGE_DOC_BYTES,STUDIO_ROOT} from '../scripts/task.mjs';
+import {displayCheck} from '../scripts/lib/checks.mjs';
+const shown=p=>p.acceptance_commands.map(displayCheck);
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
 const VERIFIES=['schema','dialogue','assets','screenshot','godot'];
@@ -55,8 +57,8 @@ test('balance-data: 스키마 검사, @auto 매핑, 읽기 지시, 역할 규칙
  const p=plan(example('merc-data.json'),{repo,warn:m=>warnings.push(m)});
  assert.equal(p.owner,'claude');
  assert.equal(p.writer,undefined);
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json']);
- assert.deepEqual(p.acceptance_map,{AC1:p.acceptance_commands});
+ assert.deepEqual(shown(p),['node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json']);
+ assert.deepEqual(p.acceptance_map,{AC1:shown(p)});
  assert.deepEqual(p.criteria_files,['design/schemas/mercenaries.schema.json']);
  assert.ok(p.rules.some(c=>c.startsWith('Role systems-designer:')));
  assert.ok(p.reading.includes('Read in full: design/glossary.md.'));
@@ -68,7 +70,7 @@ test('balance-data: 계약 데이터 작업은 contracts 스키마 검사 하나
  const g=example('contract-data.json'),p=plan(g,{repo:repoWithDocs()});
  assert.equal(p.owner,'claude');
  assert.deepEqual(p.scope,['data/contracts.json']);
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/validate-data.mjs design/schemas/contracts.schema.json data/contracts.json']);
+ assert.deepEqual(shown(p),['node tools/hfgs/validate-data.mjs design/schemas/contracts.schema.json data/contracts.json']);
  assert.deepEqual(p.criteria_files,['design/schemas/contracts.schema.json']);
  assert.match(g.objective,/grain-cart.*difficulty 3.*check might.*intro_dialogue contract-grain-cart/);
  // 화면 작업(contract-board-ui)이 이 파일을 읽는다. 대사 작업이 만드는 대사 ID와도 맞아야 한다.
@@ -98,8 +100,8 @@ test('narrative: Argon 작가 brief와 dialogue-to-dtl --check 하나',()=>{
  const p=plan(example('contract-intro-dialogue.json'),{repo:repoWithDocs()});
  assert.equal(p.owner,'claude');
  assert.equal(p.writer,'argon');
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --schema design/schemas/dialogue.schema.json --check']);
- assert.deepEqual(p.acceptance_map,{AC1:p.acceptance_commands,AC2:p.acceptance_commands});
+ assert.deepEqual(shown(p),['node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --schema design/schemas/dialogue.schema.json --check']);
+ assert.deepEqual(p.acceptance_map,{AC1:shown(p),AC2:shown(p)});
  assert.deepEqual(p.criteria_files,['design/schemas/dialogue.schema.json','design/glossary.md']);
  assert.equal(p.write_brief.format,'json');
  assert.match(p.write_brief.structure,/design\/schemas\/dialogue\.schema\.json/);
@@ -116,7 +118,7 @@ test('narrative: 용어집은 검사 기준이라 범위 안에 못 두고, glos
  assert.throws(()=>plan({...g,glossary:'design/cast.md',scope:{paths:[...g.scope.paths,'design/cast.md']}},{repo}),/design\/cast\.md\)이 scope\.paths에 있음/);
  assert.throws(()=>plan({...g,expect:{'/id':'x'}},{repo}),/expect는 schema 검사 작업/);
  const p=plan({...g,glossary:'design/cast.md'},{repo});
- assert.match(p.acceptance_commands[0],/ --glossary design\/cast\.md --check$/);
+ assert.match(shown(p)[0],/ --glossary design\/cast\.md --check$/);
  assert.ok(p.criteria_files.includes('design/cast.md'));
 });
 
@@ -125,7 +127,7 @@ test('narrative: writer "none"은 작가 brief를 빼고, dtl_dir는 .dtl 비교
  const p=plan({...g,writer:'none',dtl_dir:'dialogue'},{repo});
  assert.equal(p.writer,undefined);
  assert.equal(p.write_brief,undefined);
- assert.match(p.acceptance_commands[0],/ --check --out-dir dialogue --compare$/);
+ assert.match(shown(p)[0],/ --check --out-dir dialogue --compare$/);
  assert.throws(()=>plan({...g,writer:'codex'},{repo}),/writer는 "none"만/);
  assert.throws(()=>plan({...g,dtl_dir:''},{repo}),/dtl_dir는/);
 });
@@ -139,7 +141,7 @@ test('inScope: 범위 안 파일 곁의 Godot .uid·.import는 같이 범위로 
 test('art-image: asset_pipeline 필수, 매니페스트 검사는 파일별 --only, 리드에게 주는 MCP 절차',()=>{
  const warnings=[],p=plan(example('merc-portrait-pipeline.json'),{repo:repoWithDocs(),warn:m=>warnings.push(m)});
  assert.equal(p.owner,'asset-pipeline');
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
+ assert.deepEqual(shown(p),['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/portraits/merc-ash.png']);
  for(const d of pipelineDirectives({project_id:'merc-guild',output_class:'NONPIXEL_IMAGE'},{classes:['NONPIXEL_IMAGE']}))assert.ok(p.rules.includes(d));
  assert.ok(p.rules.some(c=>c.includes('project_id "merc-guild", requested_output_type "NONPIXEL_IMAGE"')));
  assert.ok(p.rules.some(c=>c.includes('stop and ask the user')),'일꾼 표현(needs_decision)이 아니라 리드에게 말한다');
@@ -156,7 +158,7 @@ test('asset_pipeline 폴링: STARTING과 RUNNING을 모두 기다린다',()=>{
 test('sfx: asset_pipeline 필수, WAV 매니페스트 검사, 길이 전달',()=>{
  const p=plan(example('sword-swing-sfx.json'),{repo:repoWithDocs()});
  assert.equal(p.owner,'asset-pipeline');
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/sfx/sword-swing.wav']);
+ assert.deepEqual(shown(p),['node tools/hfgs/check-assets.mjs design/asset-manifest.json --only assets/sfx/sword-swing.wav']);
  assert.ok(p.rules.some(c=>c.startsWith('Role sound-designer:')));
  assert.ok(p.rules.some(c=>c.includes('requested_output_type "SFX", duration_seconds 1.5')));
  assert.ok(p.rules.some(c=>c.includes('copy the produced PCM WAV')));
@@ -203,8 +205,8 @@ test('art-edit: 참조 이미지와 workflow_id가 필수이고, 참조는 검�
 test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싸고, Vitest는 따로 돈다',()=>{
  const p=plan(example('contract-board-ui.json'),{repo:repoWithDocs()});
  assert.equal(p.owner,'claude');
- assert.deepEqual(p.acceptance_commands,['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url "http://localhost:5173?seed=hfgs" --selector "#hud" --expect-text "금화" --name M1-T7-contract-board']);
- assert.deepEqual(p.acceptance_map,{AC1:[p.acceptance_commands[1]],AC3:[p.acceptance_commands[0]]});
+ assert.deepEqual(shown(p),['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url "http://localhost:5173?seed=hfgs" --selector "#hud" --expect-text "금화" --name M1-T7-contract-board']);
+ assert.deepEqual(p.acceptance_map,{AC1:[shown(p)[1]],AC3:[shown(p)[0]]});
  const g=example('contract-board-ui.json');
  delete g.screenshot.serve;
  assert.throws(()=>plan(g,{repo:repoWithDocs()}),/serve가 없음/);
@@ -215,7 +217,7 @@ test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있�
 test('expect는 --expect 인자로 들어가고, 이미 있는 파일을 형식 검사만으로 고치면 red-first 경고',()=>{
  const repo=repoWithDocs(),warnings=[];
  const p=plan({...example('merc-data.json'),expect:{'/mercenaries/[id=ash]/hire_cost':120,'/mercenaries/[id=ash]/name':'애쉬'}},{repo});
- assert.equal(p.acceptance_commands[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/[id=ash]/hire_cost=120" --expect "/mercenaries/[id=ash]/name=\\"애쉬\\""');
+ assert.equal(shown(p)[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/[id=ash]/hire_cost=120" --expect "/mercenaries/[id=ash]/name=\\"애쉬\\""');
  assert.throws(()=>plan({...example('merc-data.json'),expect:{'hire_cost':1}},{repo}),/\/로 시작/);
  fs.mkdirSync(path.join(repo,'data'));
  fs.writeFileSync(path.join(repo,'data','mercenaries.json'),'{}');
@@ -236,20 +238,12 @@ test('필수 입력·AC 형식·검사 기준 범위를 확인한다',()=>{
  assert.ok(!plan({...g,role:null},{repo}).rules.some(c=>c.startsWith('Role ')),'role:null이면 역할 규칙을 넣지 않는다');
 });
 
-test('quote·slashPath·sections: 붙여 넣을 명령은 bash와 PowerShell 어디서나 같은 인자로 읽혀야 한다',()=>{
- assert.equal(quote('data/a.json'),'data/a.json');
- assert.equal(quote('a b'),'"a b"');
- assert.equal(quote('AC1: 대사가 수락·거절 분기를 가진다'),'"AC1: 대사가 수락·거절 분기를 가진다"','큰따옴표로만 감싼다(JSON 이스케이프 없음)');
- assert.equal(quote('C:/work space/g'),'"C:/work space/g"');
- assert.equal(quote('say "hi"'),'"say \\"hi\\""','큰따옴표가 든 인자는 bash 규칙대로 \\"');
- assert.equal(quote('C:\\a b'),'"C:\\\\a b"');
+test('slashPath·reviewCommand·sections',()=>{
  assert.equal(slashPath('C:\\workspace\\merc-guild'),'C:/workspace/merc-guild');
  assert.equal(slashPath('/home/u/g'),'/home/u/g');
- // 리뷰 명령: Windows 경로가 "C:\\\\workspace\\\\..."처럼 이중 이스케이프되면 git bash에 붙여 넣을 때 깨진다(마일스톤 1 실측).
- const p={success_criteria:['AC1: x'],acceptance_commands:['node tools/hfgs/validate-data.mjs s.json d.json']};
- const cmd=reviewCommand(p,{head:'abc123'},{repo:'C:\\work space\\merc-guild',studio:'C:\\Users\\u\\.claude\\skills\\hf-game-studio'});
- assert.equal(cmd,'node C:/Users/u/.claude/skills/hf-game-studio/scripts/consult.mjs review --repo "C:/work space/merc-guild" --base abc123 --criteria "AC1: x" --check "node tools/hfgs/validate-data.mjs s.json d.json"');
- assert.ok(!/\\/.test(cmd),'리뷰 명령에 역슬래시가 없다');
+ // 리뷰 명령은 작업 ID만 넘긴다. 기준·검사를 인자로 풀지 않으므로 붙여 넣는 셸이 바꿀 것이 없다.
+ assert.equal(reviewCommand('M1-T2',{studio:'C:\\Users\\u\\.claude\\skills\\hf-game-studio'}),'node C:/Users/u/.claude/skills/hf-game-studio/scripts/consult.mjs review --task M1-T2');
+ assert.equal(reviewCommand('t',{studio:'C:\\work space\\hfgs'}),'node "C:/work space/hfgs/scripts/consult.mjs" review --task t');
  const t='# A\n\n## B\ntext\n```\n# not\n```\n### C\n## D\nx\n';
  assert.deepEqual(sections(t).map(x=>[x.title,x.start,x.end]),[['A',1,10],['B',3,8],['C',8,8],['D',9,10]]);
 });
@@ -306,12 +300,13 @@ test('verify: 검사 통과 + 범위 안 변경이면 통과하고 리뷰 명령
  assert.ok(!warnings.some(w=>w.includes('ACCEPTANCE_ALREADY_GREEN')),'verify에서는 red-first 경고를 내지 않는다');
  assert.deepEqual(r.changed,['data/mercenaries.json']);
  assert.deepEqual(r.ac.map(a=>a.status),['pass','manual']);
- // 경로는 슬래시로 바꿔 넣는다(Windows의 역슬래시 경로를 그대로 두면 bash에 붙여 넣을 때 깨진다).
- const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- assert.match(r.review_command,new RegExp(`consult\\.mjs review --repo ${rx(quote(slashPath(dir)))} --base ${state.head} --criteria "AC1: .*" --criteria "AC2: .*" --check "node tools/hfgs/validate-data\\.mjs .*"$`));
- assert.ok(!/\\\\/.test(r.review_command),'이중 이스케이프된 역슬래시가 없다');
+ assert.match(r.review_command,/consult\.mjs review --task M1-T1-merc-data$/);
+ // 리뷰가 읽을 것: verify 때의 plan(수용 기준·인자 배열 검사)과 기준 커밋.
  const saved=JSON.parse(fs.readFileSync(stateFile(task.task_id,env),'utf8'));
  assert.equal(saved.verify.ok,true);
+ assert.equal(saved.verify.base,state.head);
+ assert.deepEqual(saved.plan.acceptance_commands,r.plan.acceptance_commands);
+ assert.ok(Array.isArray(saved.plan.acceptance_commands[0]));
  assert.throws(()=>start(task,{repo:dir,env}),/이미 끝난 작업/);
 });
 
@@ -358,18 +353,31 @@ test('check·acTable·dirtyPaths·hashFiles',t=>{
  assert.ok(dirty.includes('한글 이름.txt')&&dirty.includes('design/세계관.md')&&!dirty.includes('design/world.md'),JSON.stringify(dirty));
  assert.deepEqual(hashFiles(dir,['none.txt']),{'none.txt':null});
  const p=plan(task,{repo:dir});
- assert.deepEqual(acTable(p,[{command:p.acceptance_commands[0],exit_code:0}]).map(a=>a.status),['pass','manual']);
+ assert.deepEqual(acTable(p,[{command:shown(p)[0],exit_code:0}]).map(a=>a.status),['pass','manual']);
  assert.deepEqual(acTable({...p,acceptance_map:undefined},[]).map(a=>a.status),['manual','manual']);
+});
+
+test('acceptance_commands: 문자열이나 인자 배열, acceptance_map은 표시 문자열이나 같은 배열로 가리킨다',()=>{
+ const repo=repoWithDocs();
+ const oneLiner=['node','-e','const fs=require("fs");process.exit(fs.existsSync("dialogue/a.dch")?0:1)'];
+ const base={...example('merc-data.json'),acceptance_commands:['npm test',oneLiner]};
+ const p=plan({...base,acceptance_map:{AC1:[oneLiner,'@auto']}},{repo});
+ assert.deepEqual(p.acceptance_commands[1],oneLiner,'배열은 그대로 둔다');
+ assert.deepEqual(p.acceptance_map.AC1,[displayCheck(oneLiner),shown(p)[2]]);
+ assert.deepEqual(plan({...base,acceptance_map:{AC1:[displayCheck(oneLiner)]}},{repo}).acceptance_map.AC1,[displayCheck(oneLiner)]);
+ // 표시가 같은 검사는 한 번만 돈다.
+ assert.equal(plan({...base,acceptance_commands:[p.acceptance_commands[2]]},{repo}).acceptance_commands.length,1);
+ for(const bad of [[[]],[['']],[[1]],['  '],'npm test'])assert.throws(()=>plan({...base,acceptance_commands:bad},{repo}),/acceptance_commands/,JSON.stringify(bad));
 });
 
 test('godot-code: godot-check all이 자동 검사, Godot 템플릿의 contract_rules.gd가 범위',()=>{
  const repo=repoWithDocs(),p=plan(example('contract-rules-godot.json'),{repo});
  assert.equal(p.owner,'claude');
- assert.deepEqual(p.acceptance_commands,['node tools/hfgs/godot-check.mjs all']);
- assert.deepEqual(p.acceptance_map,{AC1:p.acceptance_commands});
+ assert.deepEqual(shown(p),['node tools/hfgs/godot-check.mjs all']);
+ assert.deepEqual(p.acceptance_map,{AC1:shown(p)});
  assert.ok(p.rules.some(r=>r.includes('identical to the web prototype')));
  const sub=plan({...example('contract-rules-godot.json'),godot_project:'godot'},{repo});
- assert.deepEqual(sub.acceptance_commands,['node tools/hfgs/godot-check.mjs all --project godot']);
+ assert.deepEqual(shown(sub),['node tools/hfgs/godot-check.mjs all --project godot']);
  assert.equal(loadKinds().kinds['godot-scene'].verify,'godot');
 });
 
@@ -379,13 +387,12 @@ test('godot-scene: schema·expect가 있으면 데이터 검사를 자동으로 
   scope:{paths:['scripts/main.gd','data/mercenaries.json','test/playtest/accept.json']},
   schema:'design/schemas/mercenaries.schema.json',expect:{'/mercenaries/0/portrait':'assets/portraits/merc-ash.png'}};
  const p=plan(task,{repo});
- assert.equal(p.acceptance_commands[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/0/portrait=\\"assets/portraits/merc-ash.png\\""');
- assert.equal(p.acceptance_commands[1],'node tools/hfgs/godot-check.mjs all');
+ assert.equal(shown(p)[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/0/portrait=\\"assets/portraits/merc-ash.png\\""');
+ assert.equal(shown(p)[1],'node tools/hfgs/godot-check.mjs all');
  assert.throws(()=>plan({...task,schema:undefined},{repo}),/expect에는 schema가 필요함/);
- // 셸이 확장할 글자는 원래 값으로 검사되지 않으므로 거절한다(Codex 리뷰 F1).
- for(const v of ['$HOME','a`b`'])assert.throws(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),/\$나 백틱/);
- // 검사는 셸 없이 돌므로 cmd가 바꾸던 글자(&, %이름%)는 그대로 받는다.
- for(const v of ['%USERNAME%','A&B','50% 할인'])assert.doesNotThrow(()=>plan({...task,expect:{'/mercenaries/0/name':v}},{repo}),v);
+ // 자동 검사는 인자 배열이라 셸·따옴표를 거치지 않는다. 셸이 바꾸던 글자($, 백틱, &, %이름%)도 그대로 도구에 간다.
+ for(const v of ['$HOME','a`b`','%USERNAME%','A&B','50% 할인','큰 "따옴표"'])
+  assert.deepEqual(plan({...task,expect:{'/mercenaries/0/name':v}},{repo}).acceptance_commands[0].slice(-2),['--expect',`/mercenaries/0/name=${JSON.stringify(v)}`],v);
  assert.throws(()=>plan({...task,scope:{paths:['scripts/main.gd']}},{repo}),/schema 검사 대상 JSON이 없음/);
 });
 
@@ -409,8 +416,11 @@ test('verify --base: 리뷰 기준을 시작 커밋 뒤의 커밋으로 바꾸�
  fs.writeFileSync(path.join(dir,'tools','hfgs','note.md'),'x\n');git('add','.');git('commit','-q','-m','tools');
  const tools=git('rev-parse','HEAD').toString().trim();
  fs.mkdirSync(path.join(dir,'data'));fs.writeFileSync(path.join(dir,'data','mercenaries.json'),ASH);
- assert.match(verify(task,{repo:dir,env}).review_command,new RegExp(`--base ${state.head}`));
- assert.match(verify(task,{repo:dir,env,base:'HEAD'}).review_command,new RegExp(`--base ${tools}`));
+ const savedBase=()=>JSON.parse(fs.readFileSync(stateFile(task.task_id,env),'utf8')).verify.base;
+ verify(task,{repo:dir,env});
+ assert.equal(savedBase(),state.head);
+ verify(task,{repo:dir,env,base:'HEAD'});
+ assert.equal(savedBase(),tools);
  // 시작 커밋보다 앞선 커밋을 주면 리뷰 diff에 작업과 무관한 변경(prep.md)이 섞인다.
  assert.throws(()=>verify(task,{repo:dir,env,base:first}),/시작 커밋.*이어진 커밋이 아님/);
  assert.throws(()=>verify(task,{repo:dir,env,base:'nope'}),/rev-parse/);

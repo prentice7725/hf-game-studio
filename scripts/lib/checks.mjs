@@ -17,6 +17,22 @@ function bundled(name){
  return cli?{executable:process.execPath,prefix_args:[cli]}:null;
 }
 
+// 수용 검사 하나는 명령 문자열이거나 인자 배열이다. task.mjs가 만드는 자동 검사는 배열이라 따옴표를 거치지 않고 그대로 돈다
+// (예전에는 문자열로 굳혔다가 아래 splitCommand로 다시 쪼개, 그 왕복에서 따옴표 버그가 났다: 마일스톤 1·3, PR #25).
+// 사람이 쓰는 acceptance_commands도 배열로 적을 수 있다(node -e 한 줄짜리를 이스케이프 없이 쓰려면 배열이 낫다).
+export function checkEntry(e){
+ if(typeof e==='string'&&e.trim())return e;
+ if(Array.isArray(e)&&e.length&&e.every(a=>typeof a==='string')&&e[0])return e;
+ throw Error(`수용 검사는 명령 문자열이나 비지 않은 문자열 배열: ${JSON.stringify(e)}`);
+}
+
+// 표시용 인자. 그냥 써도 되는 글자만이면 그대로, 아니면 큰따옴표로만 감싼다. 큰따옴표·역슬래시·$·백틱 앞에만 \를 붙여
+// splitCommand가 같은 인자로 되돌린다. JSON.stringify로 감싸면 Windows 경로의 역슬래시가 두 번 이스케이프된다(마일스톤 1 실측).
+export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:`"${s.replace(/["\\$`]/g,'\\$&')}"`;
+
+// 검사의 이름이자 표시. 결과의 command, acceptance_map, 수용 기준 판정이 모두 이 문자열로 검사를 가리킨다.
+export const displayCheck=e=>Array.isArray(e)?e.map(quote).join(' '):e;
+
 // 따옴표 밖에 있으면 셸이 필요한 글자. 역슬래시는 Windows 경로라 그대로 둔다.
 const SHELL_CHARS=/[|&;<>()$`*?~!{}[\]^%\n]/;
 const ASSIGN=/^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -75,8 +91,9 @@ export function mergeEnv(env,given,{windows=process.platform==='win32'}={}){
 
 export function runChecks(repo,commands,{spawn=spawnSync,timeoutMs=10*60*1000,env=process.env}={}){
  const opts={cwd:repo,encoding:'utf8',timeout:timeoutMs,maxBuffer:64*1024*1024,windowsHide:true};
- return commands.map(command=>{
-  const split=splitCommand(command);
+ return commands.map(entry=>{
+  const command=displayCheck(entry),argvForm=Array.isArray(entry);
+  const split=argvForm?{env:{},argv:entry}:splitCommand(entry);
   let r,shell=false,exe=null;
   if(split){
    const [name,...rest]=split.argv;
@@ -90,10 +107,12 @@ export function runChecks(repo,commands,{spawn=spawnSync,timeoutMs=10*60*1000,en
    // 실행 파일이 없으면(셸 내장 명령 echo·dir 등, 진입점을 못 찾는 배치 래퍼) 예전처럼 셸로 돌린다.
    try{exe=bundled(name)??resolveExecutable(name,target,{env:lookupEnv});}catch{}
    if(exe)r=spawn(exe.executable,[...exe.prefix_args,...rest],{...opts,env:runEnv,shell:false});
+   // 배열로 적은 검사는 셸로 돌리지 않는다(셸이 인자를 다시 해석하면 배열로 적은 뜻이 없다).
+   else if(argvForm)r={status:null,stdout:'',stderr:'',error:Error(`실행 파일을 찾지 못함: ${name}`)};
   }
   if(!r){
    shell=true;
-   r=spawn(command,{...opts,env,shell:true});
+   r=spawn(entry,{...opts,env,shell:true});
   }
   const out=`${r.stdout??''}${r.stderr?'\n'+r.stderr:''}${r.error&&r.error.code!=='ETIMEDOUT'?'\n'+r.error.message:''}`.trim();
   return {command,shell,exit_code:r.error?.code==='ETIMEDOUT'?'timeout':r.status,output_tail:out.slice(-2000)};

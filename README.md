@@ -92,7 +92,7 @@ node ~/.claude/skills/hf-game-studio/scripts/task.mjs start tasks/merc-data.json
 node ~/.claude/skills/hf-game-studio/scripts/task.mjs verify tasks/merc-data.json --repo .
 ```
 
-verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> --criteria ... --check ...`)을 채워서 출력합니다. 작업 도중 준비 변경을 따로 커밋했으면 `verify --base <준비 커밋>`으로 리뷰 기준을 옮깁니다(시작 커밋에서 이어진 커밋만 받습니다). 경로는 슬래시로, 공백이 있는 인자는 큰따옴표로만 감싸므로 보통은 bash(git bash)와 PowerShell 어디에든 그대로 붙여 넣을 수 있습니다. 다만 큰따옴표·역슬래시가 든 인자(글자 값을 기대하는 `--expect` 등)는 bash 규칙(`\"`)으로 이스케이프하므로 리뷰 명령은 bash에 붙여 넣습니다. PowerShell은 역슬래시를 이스케이프로 보지 않습니다. 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
+verify가 통과하면 리뷰 명령(`consult.mjs review --task <task_id>`)을 출력합니다. 리뷰는 저장소·기준 커밋·수용 기준·수용 검사를 verify가 남긴 작업 기록에서 읽으므로 bash와 PowerShell 어디서 돌려도 같습니다. 작업 도중 준비 변경을 따로 커밋했으면 `verify --base <준비 커밋>`으로 리뷰 기준을 옮깁니다(시작 커밋에서 이어진 커밋만 받습니다). 작업 상태는 `~/.hf-game-studio/tasks/<task_id>.json`(`HFGS_HOME`으로 변경)에 남고, 게임 저장소 안에는 쓰지 않습니다.
 
 ### 작업 파일
 
@@ -113,7 +113,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --base <시작 커밋> 
 |---|---|
 | `kind` | 아래 표의 작업 종류 |
 | `task_id`, `objective`, `scope.paths`, `success_criteria` | 필수. 수용 기준은 `AC1: ...`처럼 ID로 시작 |
-| `acceptance_commands`, `acceptance_map` | 직접 적는 검사 명령과 기준↔명령 연결. `"@auto"`는 자동으로 만든 검사 전부 |
+| `acceptance_commands`, `acceptance_map` | 직접 적는 검사(명령 문자열, 또는 셸 없이 그대로 도는 인자 배열 `["node","-e","..."]`)와 기준↔검사 연결. map은 검사를 표시 문자열이나 같은 배열로 가리키고, `"@auto"`는 자동으로 만든 검사 전부 |
 | `allow_out_of_scope` | 범위 밖이지만 바뀌어도 되는 파일 |
 | `baseline_green` | 처음부터 검사가 통과하는 게 맞는 이유(리팩터 등). 적으면 red-first를 건너뜀 |
 | `role` | 역할 덮어쓰기. `null`이면 역할 규칙을 넣지 않음 |
@@ -190,7 +190,7 @@ GODOT_AI_PORT=8001 GODOT_AI_WS_PORT=9501 node tools/hfgs/godot-playtest.mjs test
 - **범위 검사.** `verify`는 작업 전과 비교해 바뀐 파일이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있어야 통과합니다. 작업 전부터 바뀌어 있던 파일은 내용이 더 바뀌었을 때만 이 작업의 변경으로 봅니다.
 - **섹션 단위 읽기.** 설계 문서가 커질수록 통째로 읽는 비용이 빠르게 늘고, Read 한도(약 2.5만 토큰)를 넘으면 실패합니다(원본 템플릿 [#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64), [#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). `context_sections`에 섹션을 적으면 plan이 줄 범위를 찾아 그 범위만 읽게 하고, 40KB가 넘는 문서는 섹션을 안 적어도 통째로 읽지 않게 합니다. 작가 brief에도 같은 지시가 들어갑니다.
 - **효과는 노드 상태로 검사합니다.** 소리를 틀었는지는 테스트용 카운터가 아니라 `AudioStreamPlayer.playing`으로, 그림은 `texture`와 보임으로 봅니다(godot-scene 규칙). 마일스톤 3에서 리뷰어가 카운터만 보는 테스트를 잡았습니다.
-- **검사는 셸 없이 돕니다.** 수용 명령 문자열을 bash 따옴표 규칙대로 인자로 나눠 바로 실행합니다. Windows의 cmd.exe는 큰따옴표 안의 `\"`를 모르고 `%이름%`을 확장해서, `--expect "/p=\"A&B\""` 같은 기대값이 쪼개지거나 바뀌었습니다. 앞에 붙인 `NAME=값`은 환경변수가 됩니다. 셸로 도는 명령은 셸 문법이 있는 명령(따옴표 밖의 파이프·리다이렉트·`&&`·줄바꿈·글롭·`$`, 큰따옴표 안이라도 이스케이프되지 않은 `$`·백틱, 따옴표 밖의 `#` 주석, 따옴표 밖 역슬래시 뒤의 공백·따옴표처럼 bash 이스케이프로 읽히는 것)과 실행 파일을 못 찾는 명령(셸 내장 명령, 진입점을 풀 수 없는 배치 래퍼)뿐입니다.
+- **검사는 셸 없이 돕니다.** 자동으로 만든 검사와 배열로 적은 검사는 인자 배열 그대로 실행하고, 명령 문자열은 bash 따옴표 규칙대로 인자로 나눠 바로 실행합니다. Windows의 cmd.exe는 큰따옴표 안의 `\"`를 모르고 `%이름%`을 확장해서, `--expect "/p=\"A&B\""` 같은 기대값이 쪼개지거나 바뀌었습니다. 앞에 붙인 `NAME=값`은 환경변수가 됩니다. 셸로 도는 명령은 셸 문법이 있는 명령(따옴표 밖의 파이프·리다이렉트·`&&`·줄바꿈·글롭·`$`, 큰따옴표 안이라도 이스케이프되지 않은 `$`·백틱, 따옴표 밖의 `#` 주석, 따옴표 밖 역슬래시 뒤의 공백·따옴표처럼 bash 이스케이프로 읽히는 것)과 실행 파일을 못 찾는 명령(셸 내장 명령, 진입점을 풀 수 없는 배치 래퍼)뿐입니다.
 - **리뷰어는 결론을 받지 않습니다.** `consult.mjs review`는 작성자의 요약·테스트 주장을 리뷰어에게 주지 않고, diff·바뀐 파일·스크립트가 직접 돌린 검사 결과만 줍니다. 호출 전후 작업 트리를 비교해 전문가가 파일을 바꿨으면 답을 버립니다.
 
 ## 주의

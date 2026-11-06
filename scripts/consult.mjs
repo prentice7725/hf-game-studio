@@ -8,6 +8,8 @@
 //   stats   리뷰어별로 쓸모 있는 지적 비율을 본다.
 //
 // 사용법:
+//   node scripts/consult.mjs review --task <task_id> [--reviewer ...] [--author ...] [--model M] [--effort E]
+//        task.mjs verify를 통과한 작업 기록에서 저장소·기준 커밋·수용 기준·수용 검사를 읽는다(verify가 이 명령을 출력한다).
 //   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok] [--author-model M]
 //        [--criteria "AC1: ..."]... [--criteria-file F] [--check "<명령>"]... [--model M] [--effort E]
 //   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok] [--model M] [--effort E]
@@ -25,7 +27,7 @@ import {ADAPTERS} from './lib/adapters/index.mjs';
 import {runChecks} from './lib/checks.mjs';
 export {runChecks};
 import {invoke as invokeCli,readOnlyOrders} from './lib/cli.mjs';
-import {loadKinds,docDirectives} from './task.mjs';
+import {loadKinds,docDirectives,stateFile} from './task.mjs';
 
 function fail(m){throw Object.assign(Error(m),{usage:true});}
 const str=v=>typeof v==='string'&&v.trim().length>0;
@@ -123,6 +125,16 @@ function guarded(repo,run,{git=gitOut}={}){
  const out=run();
  if(snapshot(repo,{git})!==before)fail('전문가가 실행되는 동안 저장소가 바뀜: 답을 버림. git status로 바뀐 내용을 확인하고 되돌릴 것');
  return out;
+}
+
+// review --task: verify가 남긴 작업 기록에서 리뷰 입력을 읽는다. 수용 검사는 저장된 형태(문자열이나 인자 배열) 그대로 runChecks에 간다.
+export function reviewInputFromTask(taskId,{env=process.env}={}){
+ if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(taskId??''))fail(`task_id 형식이 아님: ${taskId}`);
+ const file=stateFile(taskId,env);
+ if(!fs.existsSync(file))fail(`작업 기록 없음: ${file} (task.mjs start·verify를 먼저)`);
+ const state=JSON.parse(fs.readFileSync(file,'utf8'));
+ if(!state.verify?.ok)fail(`verify를 통과하지 않은 작업: ${taskId}. task.mjs verify가 통과한 뒤 리뷰할 것`);
+ return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:state.plan.acceptance_commands};
 }
 
 export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
@@ -264,9 +276,16 @@ function parseArgs(args){
 async function main(){
  const [cmd,...rest]=process.argv.slice(2),a=parseArgs(rest),repo=path.resolve(a.repo??process.cwd());
  if(cmd==='review'){
-  if(!a.base)fail('--base <ref> 필요(예: main)');
-  const criteria=[...a.criteria,...(a.criteria_file?fs.readFileSync(a.criteria_file,'utf8').split(/\r?\n/).filter(l=>/^AC\d+:/.test(l.trim())).map(l=>l.trim()):[])];
-  const {report,file,warnings}=review({repo,base:a.base,reviewer:a.reviewer,author:a.author,authorModel:a.author_model,criteria,checks:a.check,model:a.model,effort:a.effort});
+  let input;
+  if(a.task!==undefined){
+   if(a.base||a.repo||a.criteria.length||a.criteria_file||a.check.length)fail('--task는 저장소·기준 커밋·수용 기준·검사를 작업 기록에서 읽으므로 --repo·--base·--criteria·--check와 함께 쓰지 않음');
+   input=reviewInputFromTask(a.task);
+  }else{
+   if(!a.base)fail('--task <task_id>나 --base <ref>가 필요(예: main)');
+   const criteria=[...a.criteria,...(a.criteria_file?fs.readFileSync(a.criteria_file,'utf8').split(/\r?\n/).filter(l=>/^AC\d+:/.test(l.trim())).map(l=>l.trim()):[])];
+   input={repo,base:a.base,criteria,checks:a.check};
+  }
+  const {report,file,warnings}=review({...input,reviewer:a.reviewer,author:a.author,authorModel:a.author_model,model:a.model,effort:a.effort});
   print(report,file,warnings);
   return report.verdict==='pass'?0:1;
  }

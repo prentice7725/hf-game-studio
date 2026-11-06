@@ -26,7 +26,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
    - 작업 도중 검사만 돌려 보려면 `task.mjs check TASK.json --repo $REPO`.
    - 외부 도구 고장이나 사용자 결정 대기로 막혔으면 `task.mjs hold TASK.json --reason "이유"`로 보류를 남긴다. 범위 안 변경은 그대로 두니 버릴 것이면 git으로 되돌린다. 다시 할 때는 `start --restart`.
 4. **검증.** `node $HFGS/scripts/task.mjs verify TASK.json --repo $REPO`. 수용 검사가 모두 통과하고, 변경이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있고, 검사 기준 파일(스키마·매니페스트·용어집·참조 이미지)이 바뀌지 않았으면 통과한다. 명령이 걸리지 않은 수용 기준은 "직접 확인"으로 표시되니 리드가 눈으로 보고 리뷰어에게도 맡긴다.
-5. **리뷰.** verify가 출력하는 `consult.mjs review ...` 명령을 bash(git bash)에서 그대로 돌린다. 큰따옴표가 든 인자(글자 값 `--expect` 등)는 bash 규칙의 `\"`로 이스케이프되어 있어 PowerShell에서는 같은 인자로 읽히지 않는다. 리뷰어(기본 Codex)는 작성자의 요약·주장 없이 diff, 바뀐 파일, 스크립트가 직접 돌린 검사 결과만 본다. 지적마다 `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`로 처분을 남기고, act는 고쳐서 다시 verify → review. Argon이 쓴 글은 `--author agy --author-model gemini-4-argon-high`로 적는다(Claude가 다른 계열이므로 리드가 직접 보거나 `--reviewer codex`). 사람이 확인할 기준(소리, 보이는 모양)이 있으면 판정이 `decision`으로 끝난다. 사용자가 실행해 확인하면 같은 dispose에 `"AC5=confirmed:들어 봄"`(아니면 `"AC5=rejected:이유"`)을 남긴다.
+5. **리뷰.** verify가 출력하는 `consult.mjs review --task <task_id>`를 돌린다(셸 무관). 저장소·기준 커밋·수용 기준·수용 검사는 verify가 남긴 작업 기록에서 읽는다. 리뷰어(기본 Codex)는 작성자의 요약·주장 없이 diff, 바뀐 파일, 스크립트가 직접 돌린 검사 결과만 본다. 지적마다 `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`로 처분을 남기고, act는 고쳐서 다시 verify → review. Argon이 쓴 글은 `--author agy --author-model gemini-4-argon-high`로 적는다(Claude가 다른 계열이므로 리드가 직접 보거나 `--reviewer codex`). 사람이 확인할 기준(소리, 보이는 모양)이 있으면 판정이 `decision`으로 끝난다. 사용자가 실행해 확인하면 같은 dispose에 `"AC5=confirmed:들어 봄"`(아니면 `"AC5=rejected:이유"`)을 남긴다.
 6. **사람 승인.** 그림과 소리는 사용자가 보고 듣고 승인한다. 승인 전 애셋은 아틀라스나 장면에 넣지 않는다.
 
 커밋·푸시는 사용자가 시킬 때만 한다.
@@ -77,7 +77,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 
 다른 계열 모델을 읽기 전용 전문가로 부른다. 전문가는 파일을 고치지 않고 결과를 JSON으로 돌려주며, 파일은 리드가 쓴다. 호출 전후로 작업 트리(추적되지 않은 파일 내용 포함)를 비교해 바뀌었으면 답을 버린다. 보고서는 `~/.hf-game-studio/reviews/`(HFGS_HOME으로 변경)에 남는다.
 
-- **리뷰:** `node $HFGS/scripts/consult.mjs review --repo $REPO --base <시작 커밋> --criteria "AC1: ..." --check "<검사 명령>"`. verify가 이 명령을 채워서 출력한다. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다. 용량 초과(`at capacity`)·과부하 같은 일시 오류는 한 번 다시 부르고, 또 실패하면 다른 계열로 바꾸라고 알린다(글쓰기도 같다).
+- **리뷰:** `node $HFGS/scripts/consult.mjs review --task <task_id>`. verify가 이 명령을 출력하고, 리뷰는 verify를 통과한 작업 기록(그때의 plan과 `--base`)을 읽는다. 작업 밖에서 리뷰할 때만 `--repo $REPO --base <커밋> --criteria "AC1: ..." --check "<검사 명령>"`을 직접 쓴다. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다. 용량 초과(`at capacity`)·과부하 같은 일시 오류는 한 번 다시 부르고, 또 실패하면 다른 계열로 바꾸라고 알린다(글쓰기도 같다).
 - **처분:** `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`(act, consider, noted, dismissed, contract_misread). 기각과 계약 오독에는 이유가 필요하다. `consult.mjs stats`가 리뷰어별로 쓸모 있는 지적 비율을 보여 준다.
 - **글쓰기:** `consult.mjs write <brief.json> --repo $REPO`. 기본 작가는 Gemini Argon(high). brief는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `structure`, `context_docs`, `context_sections`. `task.mjs plan`이 글 작업의 brief를 만들어 준다. agy는 한 번에 2분 정도 걸린다.
 - **작업 트리 비교의 한계:** 추적 파일은 git status와 diff로만 비교한다. assume-unchanged나 clean 필터로 git이 숨기는 변경은 잡지 못한다. 실수를 잡는 장치이지 의도적 우회를 막는 장치가 아니다.
