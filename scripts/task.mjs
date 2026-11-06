@@ -17,7 +17,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {runChecks,passed} from './lib/checks.mjs';
+import {runChecks,passed,checkEntry,displayCheck,quote} from './lib/checks.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT=path.resolve(HERE,'..');
@@ -40,11 +40,6 @@ export function roleDirectives(role,root=STUDIO_ROOT){
  return fs.readFileSync(file,'utf8').split(/\r?\n/).filter(l=>l.startsWith('- ')).map(l=>l.slice(2).trim());
 }
 
-// 셸에 붙여 넣는 명령의 인자. 그냥 써도 되는 글자만이면 그대로, 아니면 큰따옴표로만 감싼다.
-// JSON.stringify로 감싸면 Windows 경로의 역슬래시가 두 번 이스케이프돼(C:\\\\workspace) bash(git bash)에 붙여 넣으면 깨진다(마일스톤 1 실측).
-// 큰따옴표·역슬래시·$·백틱이 든 인자만 bash 큰따옴표 규칙대로 그 네 글자 앞에 \를 붙인다. 수용 검사 실행기(lib/checks.mjs)가
-// 같은 규칙으로 되돌리므로 줄바꿈·탭 같은 제어 문자도 그대로 왕복한다(JSON 이스케이프는 \n으로 바꿔 버린다).
-export const quote=s=>/^[\w./:@=-]+$/.test(s)?s:`"${s.replace(/["\\$`]/g,'\\$&')}"`;
 // 경로는 슬래시로 통일한다. Windows도 슬래시 경로를 받고, bash와 PowerShell 어디에 붙여 넣어도 그대로 돈다.
 export const slashPath=s=>s.replace(/\\/g,'/');
 
@@ -142,13 +137,10 @@ export function pipelineDirectives(p,{classes=[],repo=process.cwd(),scope=[],edi
 // 매니페스트 검사 대상: asset_files가 없으면 scope.paths 중 검사 도구가 읽을 수 있는 PNG·WAV.
 const assetFiles=input=>input.asset_files??input.scope.paths.filter(p=>/\.(png|wav)$/i.test(p));
 const jsonFiles=input=>input.data_files??input.scope.paths.filter(p=>p.endsWith('.json'));
-// 수용 명령은 셸 없이 돌지만(lib/checks.mjs) verify가 내는 리뷰 명령은 리드가 bash에 붙여 넣는다.
-// 큰따옴표 안에서도 bash는 $·백틱을 확장해 리뷰어가 받는 --check가 달라지므로 그런 값은 미리 거절한다.
+// 자동 수용 검사는 인자 배열이다. 셸도 따옴표도 거치지 않으므로 expect 값에 어떤 글자가 있어도 그대로 검사된다.
 const expectArgs=input=>Object.entries(input.expect??{}).flatMap(([p,v])=>{
  if(!p.startsWith('/'))fail(`expect의 경로는 /로 시작해야 함: ${p}`);
- const arg=`${p}=${JSON.stringify(v)}`;
- if(/[$`]/.test(arg))fail(`expect에 $나 백틱은 쓸 수 없음(붙여 넣는 셸이 확장함): ${p}`);
- return ['--expect',arg];
+ return ['--expect',`${p}=${JSON.stringify(v)}`];
 });
 
 export function autoAcceptance(input,kind){
@@ -156,7 +148,7 @@ export function autoAcceptance(input,kind){
  if(kind.verify==='schema'&&input.schema){
   const files=jsonFiles(input);
   if(!files.length)fail('schema 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
-  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)].map(quote).join(' '));
+  out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)]);
  }
  // 대사: 스키마 검사가 아니라 변환기의 --check를 돌린다. 스키마·그래프 규칙·용어집 인물 ID·Dialogic 변환까지 한 번에 본다.
  if(kind.verify==='dialogue'&&input.schema){
@@ -165,11 +157,11 @@ export function autoAcceptance(input,kind){
   if(input.expect!==undefined)fail('expect는 schema 검사 작업(balance-data 등)에만 쓸 수 있음: 대사는 dialogue-to-dtl.mjs --check로 검사한다');
   // dtl_dir가 있으면 그 폴더의 .dtl이 지금 JSON의 변환 결과와 같은지도 본다(변환만 하는 작업의 수용 검사, 낡은 .dtl 잡기).
   if(input.dtl_dir!==undefined&&!str(input.dtl_dir))fail('dtl_dir는 .dtl이 있는 폴더(예: "dialogue")');
-  out.push(['node',`${TOOLS_DIR}/dialogue-to-dtl.mjs`,...files,'--schema',input.schema,...(input.glossary?['--glossary',input.glossary]:[]),'--check',...(input.dtl_dir?['--out-dir',input.dtl_dir,'--compare']:[])].map(quote).join(' '));
+  out.push(['node',`${TOOLS_DIR}/dialogue-to-dtl.mjs`,...files,'--schema',input.schema,...(input.glossary?['--glossary',input.glossary]:[]),'--check',...(input.dtl_dir?['--out-dir',input.dtl_dir,'--compare']:[])]);
  }
  if(kind.verify==='assets'&&input.assets_manifest){
   const files=assetFiles(input);
-  out.push(['node',`${TOOLS_DIR}/check-assets.mjs`,input.assets_manifest,...files.flatMap(f=>['--only',f])].map(quote).join(' '));
+  out.push(['node',`${TOOLS_DIR}/check-assets.mjs`,input.assets_manifest,...files.flatMap(f=>['--only',f])]);
  }
  // Godot: 문법 + gdUnit4 + 헤드리스 부팅. GODOT_BIN이 있어야 돈다(없으면 검사 도구가 종료 코드 2로 알린다).
  if(kind.verify==='godot'){
@@ -178,9 +170,9 @@ export function autoAcceptance(input,kind){
    // 범위의 test/ 아래 JSON(플레이테스트 시나리오)은 데이터가 아니다.
    const files=input.data_files??input.scope.paths.filter(p=>p.endsWith('.json')&&!p.startsWith('test/'));
    if(!files.length)fail('schema 검사 대상 JSON이 없음: data_files를 적거나 scope.paths에 .json 파일을 넣을 것');
-   out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)].map(quote).join(' '));
+   out.push(['node',`${TOOLS_DIR}/validate-data.mjs`,input.schema,...files,...expectArgs(input)]);
   }else if(input.expect!==undefined)fail('expect에는 schema가 필요함');
-  out.push(['node',`${TOOLS_DIR}/godot-check.mjs`,'all',...(input.godot_project?['--project',input.godot_project]:[])].map(quote).join(' '));
+  out.push(['node',`${TOOLS_DIR}/godot-check.mjs`,'all',...(input.godot_project?['--project',input.godot_project]:[])]);
  }
  if(kind.verify==='screenshot'&&input.screenshot){
   const s=input.screenshot,args=['node',`${TOOLS_DIR}/screenshot.mjs`];
@@ -197,7 +189,7 @@ export function autoAcceptance(input,kind){
   args.push(`--${target[0]}`,s[target[0]],'--selector',s.selector);
   if(s.expect_text)args.push('--expect-text',s.expect_text);
   args.push('--name',s.name??input.task_id);
-  out.push(args.map(quote).join(' '));
+  out.push(args);
  }
  return out;
 }
@@ -265,17 +257,22 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
   if(existing.length)warn(`이미 있는 파일(${existing.join(', ')})은 형식 검사가 처음부터 통과해 start가 ACCEPTANCE_ALREADY_GREEN으로 거절할 수 있음: `
    +(kind.verify==='schema'?'expect에 바뀔 값을 적거나 ':'')+'바뀐 내용을 확인하는 검사를 acceptance_commands에 넣을 것');
  }
- const commands=[...new Set([...(input.acceptance_commands??[]),...auto])];
+ // 직접 적은 검사는 문자열이나 인자 배열. 같은 검사는 표시 문자열로 가려 한 번만 돈다.
+ if(input.acceptance_commands!==undefined&&!Array.isArray(input.acceptance_commands))fail('acceptance_commands는 배열');
+ let own;
+ try{own=(input.acceptance_commands??[]).map(checkEntry);}catch(e){fail(`acceptance_commands: ${e.message}`);}
+ const seen=new Set(),commands=[...own,...auto].filter(c=>{const d=displayCheck(c);return !seen.has(d)&&seen.add(d);});
  if(commands.length>10)fail('acceptance_commands는 10개까지');
  if(!commands.length)warn('수용 명령이 없음: verify가 기계적으로 확인할 것이 없다. 가능하면 schema·assets_manifest·screenshot이나 테스트 명령을 적을 것');
 
- // acceptance_map의 "@auto"는 자동으로 만든 수용 명령 전부를 뜻한다.
+ // acceptance_map은 검사를 표시 문자열로 가리킨다(배열로 적은 검사는 배열 그대로 적어도 된다). "@auto"는 자동으로 만든 수용 명령 전부다.
  let map;
  if(input.acceptance_map){
-  map=Object.fromEntries(Object.entries(input.acceptance_map).map(([ac,cmds])=>[ac,[...new Set(cmds.flatMap(c=>c==='@auto'?auto:[c]))]]));
+  const names=commands.map(displayCheck);
+  map=Object.fromEntries(Object.entries(input.acceptance_map).map(([ac,cmds])=>[ac,[...new Set(cmds.flatMap(c=>c==='@auto'?auto.map(displayCheck):[displayCheck(c)]))]]));
   for(const [ac,cmds] of Object.entries(map)){
    if(!input.success_criteria.some(c=>c.startsWith(ac+':')))fail(`acceptance_map의 ${ac}가 success_criteria에 없음`);
-   const unknown=cmds.find(c=>!commands.includes(c));
+   const unknown=cmds.find(c=>!names.includes(c));
    if(unknown)fail(`acceptance_map의 명령이 acceptance_commands에 없음: ${unknown}`);
    if(!cmds.length)fail(`acceptance_map의 ${ac}에 명령이 없음("@auto"인데 자동 수용 명령이 만들어지지 않음)`);
   }
@@ -392,11 +389,10 @@ export function acTable(p,results){
 }
 
 // 다른 계열 리뷰 명령. 리뷰어는 작성자의 주장 없이 diff와 이 검사 결과만 본다.
-// base는 기본으로 start 때의 HEAD다. 작업 도중 준비 변경(도구 갱신 등)을 따로 커밋했으면 verify --base로 그 커밋을 준다.
-export function reviewCommand(p,state,{repo,studio=STUDIO_ROOT,base=state.head}={}){
- const args=['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--repo',slashPath(repo),'--base',base,
-  ...p.success_criteria.flatMap(c=>['--criteria',c]),...p.acceptance_commands.flatMap(c=>['--check',c])];
- return args.map(quote).join(' ');
+// 저장소·기준 커밋·수용 기준·수용 검사는 consult.mjs가 작업 기록(verify가 남긴 plan과 base)에서 직접 읽는다.
+// 예전에는 이것들을 --criteria·--check 인자로 풀어 붙여 넣게 해, 셸이 따옴표·$·백틱을 다시 해석했다.
+export function reviewCommand(taskId,{studio=STUDIO_ROOT}={}){
+ return ['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--task',taskId].map(quote).join(' ');
 }
 
 export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},env=process.env,checks=runChecks,git=gitOut,base}={}){
@@ -426,8 +422,11 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
  if(outOfScope.length)errors.push(`범위 밖 변경: ${outOfScope.join(', ')} (scope.paths에 넣을 것이면 작업 파일을 고치고, 아니면 되돌릴 것)`);
  const ac=acTable(p,results);
  const ok=!failed.length&&!errors.length;
- const review=reviewCommand(p,state,{repo:path.resolve(repo),base});
- state.verify={at:new Date().toISOString(),ok,failed,errors,changed,ac,review_command:review};
+ const review=reviewCommand(p.task_id);
+ // 리뷰는 이 plan(지금 작업 파일 기준)과 base를 읽는다. start 뒤에 작업 파일의 기준·검사를 고쳤어도 리뷰가 verify와 같은 것을 본다.
+ // base는 기본으로 start 때의 HEAD다. 작업 도중 준비 변경(도구 갱신 등)을 따로 커밋했으면 verify --base로 그 커밋을 준다.
+ state.plan=p;
+ state.verify={at:new Date().toISOString(),ok,failed,errors,changed,ac,base:base??state.head,review_command:review};
  writeState(state,env);
  return {plan:p,results,ac,failed,errors,changed,ok,review_command:review};
 }
@@ -441,7 +440,7 @@ function printPlan(p){
  if(p.reading.length){console.log('읽기:');for(const r of p.reading)console.log('  - '+r);}
  if(p.rules.length){console.log('규칙:');for(const r of p.rules)console.log('  - '+r);}
  console.log('수용 기준:');for(const c of p.success_criteria)console.log('  - '+c);
- console.log(p.acceptance_commands.length?'수용 검사:':'수용 검사: (없음)');for(const c of p.acceptance_commands)console.log('  $ '+c);
+ console.log(p.acceptance_commands.length?'수용 검사:':'수용 검사: (없음)');for(const c of p.acceptance_commands)console.log('  $ '+displayCheck(c));
  if(p.write_brief)console.log(`작가 brief(consult.mjs write에 넘길 것):\n${JSON.stringify(p.write_brief,null,2)}`);
 }
 function printResults(results){

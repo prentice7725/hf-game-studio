@@ -5,7 +5,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {review,write,dispose,stats,judge,familyOf,reviewPrompt,runChecks,checkWriteBrief,retrying} from '../scripts/consult.mjs';
+import {review,write,dispose,stats,judge,familyOf,reviewPrompt,runChecks,checkWriteBrief,retrying,reviewInputFromTask} from '../scripts/consult.mjs';
+
+test('review --task: verify를 통과한 작업 기록에서 저장소·기준 커밋·수용 기준·인자 배열 검사를 읽는다',t=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-home-')),env={HFGS_HOME:home};
+ t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+ const write=s=>{fs.mkdirSync(path.join(home,'tasks'),{recursive:true});fs.writeFileSync(path.join(home,'tasks','T1.json'),JSON.stringify(s));};
+ const check=['node','v.mjs','--expect','/p="$HOME A&B"'];
+ const state={task_id:'T1',repo:'/r',head:'aaa',plan:{success_criteria:['AC1: x'],acceptance_commands:[check,'npm test']}};
+ assert.throws(()=>reviewInputFromTask('T1',{env}),/작업 기록 없음/);
+ assert.throws(()=>reviewInputFromTask('../x',{env}),/task_id 형식/);
+ write(state);
+ assert.throws(()=>reviewInputFromTask('T1',{env}),/verify를 통과하지 않은/);
+ write({...state,verify:{ok:true,base:'bbb'}});
+ assert.deepEqual(reviewInputFromTask('T1',{env}),{repo:'/r',base:'bbb',criteria:['AC1: x'],checks:[check,'npm test']});
+ write({...state,verify:{ok:true}});
+ assert.equal(reviewInputFromTask('T1',{env}).base,'aaa','base가 없던 예전 기록은 start 때의 HEAD');
+});
 
 function repo(){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-consult-'));
