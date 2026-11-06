@@ -195,7 +195,7 @@ GODOT_AI_PORT=8001 GODOT_AI_WS_PORT=9501 node tools/hfgs/godot-playtest.mjs test
 
 ## 주의
 
-- **asset-pipeline은 준비 상태부터 확인합니다.** 마일스톤 1·3에서 초상화·표정 편집·효과음은 실제 모델로 돌았습니다. 첫 작업 전에 `asset_capabilities`로 준비 상태를 보고 한 건 돌려 보세요. `PIXEL_STATIC`은 32색 양자화와 Pixel Gate를 통과해도 그림이 엉터리일 수 있습니다(plan이 경고). 마일스톤 3에서는 asset-pipeline이 매니페스트 크기로 바로 그려 노이즈가 나왔고, 이 문제는 asset-pipeline 쪽 수정을 기다립니다.
+- **asset-pipeline은 준비 상태부터 확인합니다.** 마일스톤 1·3에서 초상화·표정 편집·효과음은 실제 모델로 돌았습니다. 첫 작업 전에 `asset_capabilities`로 준비 상태를 보고 한 건 돌려 보세요. `PIXEL_STATIC`은 32색 양자화와 Pixel Gate를 통과해도 그림이 엉터리일 수 있습니다(plan이 경고). 생성 모델이 내는 것은 격자가 맞지 않는 유사픽셀이라 **픽셀아트는 v2 범위에서 뺐습니다**(실험적으로만 남김, [설계 문서](docs/design/game-studio-v2.md)의 "애셋을 Godot으로").
 - **그림과 소리는 사람 승인까지.** `check-assets.mjs`는 크기·투명도·용량·길이·채널만 봅니다. 화풍·캐릭터 일관성과 소리 품질은 사람이 보고 들어 승인합니다. 승인 전 애셋은 아틀라스나 장면에 넣지 않습니다.
 - **스크린샷 검사.** 대상 저장소에 Playwright가 있어야 합니다. 스크린샷은 저장소 밖(임시 폴더, `HFGS_SCREENSHOT_DIR`로 변경)에 저장합니다. 서버 종료는 Linux·macOS에서 프로세스 그룹 단위로 테스트했고, Windows(`taskkill /T`)는 테스트하지 않았습니다.
 - **agy 모델.** 기본 작가는 `gemini-4-argon`(high)입니다. `agy models` 목록에 없는 모델은 실행 전에 막습니다(agy는 모르는 모델을 받으면 조용히 기본 모델로 돕니다).
