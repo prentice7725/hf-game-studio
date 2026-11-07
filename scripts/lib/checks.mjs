@@ -119,3 +119,6 @@ export function runChecks(repo,commands,{spawn=spawnSync,timeoutMs=10*60*1000,en
  });
 }
 export const passed=r=>r.exit_code===0;
+// exit 코드 규칙: 0 통과, 1 결과가 틀림(작업이 만들 파일이 아직 없는 것 포함), 그 밖(2, 시간 초과, 실행 파일 없음, 셸의 127 등)은
+// 검사를 돌릴 수 없음. 고장 난 검사는 작업 결과와 상관없이 실패하므로 red-first의 실패로 치지 않는다.
+export const broken=r=>r.exit_code!==0&&r.exit_code!==1;

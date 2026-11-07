@@ -95,6 +95,8 @@ async function loadPlaywright(){
 }
 
 async function capture(o){
+ // 찍을 파일이 아직 없는 것은 작업 결과가 틀린 것(exit 1)이지 검사를 못 돌린 것(exit 2)이 아니다.
+ if(o.file&&!fs.existsSync(o.file))return [`파일 없음: ${o.file}`];
  const pw=await loadPlaywright();
  const problems=[];
  let app,browser,page;

@@ -50,3 +50,10 @@ test('서버가 응답 전에 죽으면 바로 실패',async()=>{
  await assert.rejects(waitForUrl('http://127.0.0.1:9/',child,10000),/응답 전에 종료/);
  await stopServer(child);
 });
+
+test('찍을 파일이 없으면 브라우저를 띄우지 않고 exit 1(결과가 틀림)',async()=>{
+ const {spawnSync}=await import('node:child_process');
+ const r=spawnSync(process.execPath,['tools/screenshot.mjs','--file','no-such-page-hfgs.html','--selector','#app'],{encoding:'utf8'});
+ assert.equal(r.status,1,r.stderr);
+ assert.match(r.stderr,/파일 없음: no-such-page-hfgs\.html/);
+});
