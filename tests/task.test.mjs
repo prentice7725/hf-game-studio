@@ -290,6 +290,16 @@ test('start: 이미 통과하는 검사는 ACCEPTANCE_ALREADY_GREEN, expect나 b
  assert.ok(warnings.some(w=>w.includes('처음부터 통과')));
 });
 
+test('start: 돌릴 수 없는 검사(exit 2·실행 파일 없음)는 red로 치지 않고 ACCEPTANCE_BROKEN으로 거절한다',t=>{
+ const {dir,env}=gameRepo(t);
+ const typo=['node','tools/hfgs/validate-data.mjs','design/schemas/오타.schema.json','data/mercenaries.json'];
+ const task={...example('merc-data.json'),acceptance_commands:[typo,['no-such-tool-hfgs','--x']]};
+ assert.throws(()=>start(task,{repo:dir,env}),e=>/ACCEPTANCE_BROKEN/.test(e.message)&&/\[exit 2\]/.test(e.message)&&/오타\.schema\.json/.test(e.message)&&/no-such-tool-hfgs/.test(e.message));
+ assert.equal(fs.existsSync(stateFile('M1-T1-merc-data',env)),false,'거절하면 작업 기록을 남기지 않는다');
+ // 작업이 만들 데이터 파일이 없는 것(exit 1)은 그대로 red다.
+ assert.equal(start(example('merc-data.json'),{repo:dir,env}).state.baseline.red.length,1);
+});
+
 test('verify: 검사 통과 + 범위 안 변경이면 통과하고 리뷰 명령을 준다',t=>{
  const {dir,env}=gameRepo(t),task=example('merc-data.json');
  assert.throws(()=>verify(task,{repo:dir,env}),/시작 기록이 없음/);

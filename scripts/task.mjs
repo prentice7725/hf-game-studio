@@ -17,7 +17,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {runChecks,passed,checkEntry,displayCheck,quote} from './lib/checks.mjs';
+import {runChecks,passed,broken,checkEntry,displayCheck,quote} from './lib/checks.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT=path.resolve(HERE,'..');
@@ -349,6 +349,9 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  if(foreign.length)warn(`범위 밖의 커밋 안 된 변경 ${foreign.length}개가 있음: 리뷰 diff에 섞이니 이 작업과 무관하면 먼저 커밋할 것 (${list(foreign)})`);
  else if(dirty.length)warn(`작업 전에 바뀐 파일 ${dirty.length}개가 있음(내용을 기록해 두고 verify에서 더 바뀌었는지만 봄): ${list(dirty)}`);
  const baseline=checks(repo,p.acceptance_commands);
+ // 돌릴 수 없는 검사(exit 2 등)는 작업 결과와 상관없이 실패하므로 red가 아니다. 작업 전에 고칠 것.
+ const bad=baseline.filter(broken);
+ if(bad.length)fail(`ACCEPTANCE_BROKEN: 수용 검사를 돌릴 수 없음(exit 0·1이 아님). 인자·경로·도구를 고칠 것\n${bad.map(r=>`  [exit ${r.exit_code}] ${r.command}\n    ${r.output_tail.split('\n').slice(-3).join('\n    ')}`).join('\n')}`);
  const red=baseline.filter(r=>!passed(r)).map(r=>r.command);
  if(p.acceptance_commands.length&&!red.length){
   if(!str(input.baseline_green))fail('ACCEPTANCE_ALREADY_GREEN: 수용 검사가 손대기 전에 모두 통과함. 바뀔 내용을 확인하는 검사(expect, 테스트)를 넣거나, 처음부터 통과하는 게 맞으면(리팩터 등) baseline_green에 이유를 적을 것');
@@ -444,7 +447,7 @@ function printPlan(p){
  if(p.write_brief)console.log(`작가 brief(consult.mjs write에 넘길 것):\n${JSON.stringify(p.write_brief,null,2)}`);
 }
 function printResults(results){
- for(const r of results)console.log(`  ${passed(r)?'OK  ':'FAIL'} ${r.command}${passed(r)?'':`\n       ${r.output_tail.split('\n').slice(-3).join('\n       ')}`}`);
+ for(const r of results)console.log(`  ${passed(r)?'OK  ':broken(r)?`ERR(${r.exit_code})`:'FAIL'} ${r.command}${passed(r)?'':`\n       ${r.output_tail.split('\n').slice(-3).join('\n       ')}`}`);
 }
 
 function parseArgs(args){

@@ -158,6 +158,8 @@ Godot 4.7 이상으로 고정하므로 1차 평가 대상은 **hi-godot/godot-ai
 
 **수용 검사를 인자 배열로 (2026-11-06).** 남은 문자열 왕복을 걷어 냈다. task.mjs가 만든 인자를 `quote`로 문자열로 굳혔다가 `lib/checks.mjs`가 다시 쪼개는 왕복, 그리고 verify가 기준·검사를 `--criteria`·`--check`로 풀어 리드가 셸에 붙여 넣는 왕복이다(마일스톤 1·3과 PR #25의 따옴표 버그가 모두 여기서 났다). 수용 검사는 이제 명령 문자열이나 인자 배열이고, 자동 검사는 배열로 저장·실행된다. 표시 문자열(`displayCheck`)이 검사의 이름이라 `acceptance_map`·수용 기준 판정·리뷰 결과는 그대로다. 사람이 쓰는 `acceptance_commands`도 배열로 적을 수 있다(merc-guild M2-T3의 세 겹 이스케이프된 `node -e`). verify는 그때의 plan과 리뷰 기준 커밋을 작업 기록에 남기고 `consult.mjs review --task <task_id>`만 출력해, 리뷰가 그 기록을 읽는다. 그래서 `expect`의 `$`·백틱 거절과 "리뷰 명령은 bash 전용" 제약을 뺐다. 배열로 적은 검사는 실행 파일을 못 찾으면 셸로 넘기지 않고 실패한다.
 
+**고장 난 검사는 red가 아니다 (2026-11-07).** red-first는 exit 0이 아닌 결과를 모두 실패로 쳐서, 스키마 경로 오타나 잘못된 `--expect`(exit 2), 없는 실행 파일로도 start를 통과했다. 그런 검사는 작업과 상관없이 계속 실패해 verify에 가서야 드러난다. 도구의 exit 코드를 0 통과 / 1 결과가 틀림 / 2 검사를 돌릴 수 없음으로 정하고(`lib/checks.mjs`의 `passed`·`broken`), start는 0·1이 아닌 검사가 하나라도 있으면 `ACCEPTANCE_BROKEN`으로 거절한다. 도구를 훑어보니 validate-data·check-assets·dialogue-to-dtl·godot-check·godot-playtest는 이미 이 규칙대로였고, screenshot만 `--file`로 준 페이지가 없을 때 2로 끝나 1로 바꿨다(새 페이지를 만드는 작업의 정상적인 red). 플레이테스트 검사는 이제 start할 때도 에디터가 떠 있어야 한다.
+
 **마일스톤 3 실측 (2026-11-03).** 승인한 애셋을 Godot 장면에 넣는 마일스톤(2작업)을 돌려 마찰 12건을 모았고(merc-guild `design/milestone-3.md`), 다음을 반영했다. 초상화·효과음 작업은 끝났고, 픽셀 스프라이트 작업은 asset-pipeline의 생성 크기 문제로 보류 중이다.
 
 - asset-pipeline이 매니페스트 크기(128×128)를 생성 크기로 써서 픽셀 워크플로가 색 덩어리를 냈다 → `prepareBrief`가 `PIXEL_STATIC`에는 `resolution`을 넘기지 않는다(축소는 리드가 `pick --from`). asset-pipeline 쪽 수정도 필요하다.

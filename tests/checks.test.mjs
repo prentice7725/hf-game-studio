@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {splitCommand,runChecks,mergeEnv,quote,checkEntry,displayCheck} from '../scripts/lib/checks.mjs';
+import {splitCommand,runChecks,mergeEnv,quote,checkEntry,displayCheck,passed,broken} from '../scripts/lib/checks.mjs';
 
 test('splitCommand: bash와 같은 따옴표 규칙, 앞의 NAME=값은 환경변수',()=>{
  assert.deepEqual(splitCommand('node tools/hfgs/godot-check.mjs all'),{env:{},argv:['node','tools/hfgs/godot-check.mjs','all']});
@@ -113,4 +113,10 @@ test('runChecks: 인자 배열은 셸·따옴표를 거치지 않고, 실행 파
  assert.equal(m.shell,false);
  assert.notEqual(m.exit_code,0);
  assert.match(m.output_tail,/실행 파일을 찾지 못함: no-such-tool-hfgs/);
+});
+
+test('passed·broken: 0 통과, 1 결과가 틀림, 그 밖은 검사를 돌릴 수 없음',()=>{
+ const at=exit_code=>({exit_code});
+ assert.deepEqual([0,1,2,127,null,'timeout'].map(c=>[passed(at(c)),broken(at(c))]),
+  [[true,false],[false,false],[false,true],[false,true],[false,true],[false,true]]);
 });
