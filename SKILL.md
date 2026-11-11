@@ -83,10 +83,25 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 - **작업 트리 비교의 한계:** 추적 파일은 git status와 diff로만 비교한다. assume-unchanged나 clean 필터로 git이 숨기는 변경은 잡지 못한다. 실수를 잡는 장치이지 의도적 우회를 막는 장치가 아니다.
 - **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
 
+## 실험 (v3 P0, 시험 중)
+
+무엇을 만들지 정해지지 않았을 때 쓴다. 정해진 일(버그 수정, 이미 정한 규칙의 구현, 애셋)은 위 "작업마다"로 바로 간다. 설계는 [docs/design/game-studio-v3.md](docs/design/game-studio-v3.md).
+
+1. `/gs-inspect`: 설계 문서·코드·작업 기록·실험 폴더의 차이와 다음 실험 후보를 본다.
+2. `/gs-experiment <질문>`: 가설·반증 조건·측정·범위·예산을 적은 실험 카드(`design/experiments/EXP-NNN-*.json`)를 쓴다. 싼 칸부터다(시뮬레이션 → 웹 프로토타입 → Godot). 가설을 둘 이상 못 세울 때만 `/gs-research <질문>`으로 조사 노트를 먼저 쓴다.
+3. `node $HFGS/scripts/experiment.mjs lint <카드> --repo $REPO`가 통과하면 사용자에게 카드를 보이고 승인을 받는다. 승인 전에는 작업을 시작하지 않는다.
+4. 카드의 측정을 작업의 수용 검사로 넣어 "작업마다"대로 돈다. 카드는 작업 도중 고치지 않는다.
+5. 측정이 판정되면 사용자 확인 뒤 카드에 `verdict`를 덧붙인다. 기각된 카드도 남긴다.
+
+P0에서 기계가 보는 것은 lint뿐이다. 승인 기록, 카드 해시 고정, 예산 집계, 작업과 카드의 연결은 아직 리드가 지킨다(P1에서 `task.mjs`에 넣는다).
+
 ## 검토 스킬
 
-setup이 게임 저장소에 까는 리드용 스킬이다. 읽기 전용이고 섹션 단위로 읽는다.
+setup이 게임 저장소에 까는 리드용 스킬이다. 읽기 전용이고 섹션 단위로 읽는다(`gs-research`·`gs-experiment`는 `design/` 아래에 노트와 카드를 쓴다).
 
 - `/gs-balance-check <데이터 파일>`: 수치 이상치, 지배 전략, 자원 흐름 점검
 - `/gs-design-review <문서>`: GDD 섹션이 구현 가능한 규칙인지 점검
 - `/gs-scope-check`: 마일스톤 작업 목록이 범위를 넘는지 점검
+- `/gs-inspect`: 설계 문서 ↔ 코드 ↔ 작업 기록 ↔ 실험의 차이와 다음 실험 후보
+- `/gs-research <질문>`: 게임플레이 질문의 웹 조사 노트(가설을 못 세울 때만)
+- `/gs-experiment <질문>`: 실험 카드와 그 작업 파일

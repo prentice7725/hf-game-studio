@@ -24,6 +24,7 @@ scripts/
                            check(검사만), verify(검사·범위·기준 파일 불변 + 리뷰 명령), hold(막힌 작업 보류)
   consult.mjs              다른 계열 전문가 호출: review, write(Argon), dispose(지적 처분 + 사람 확인), stats
   assets.mjs               이미지·효과음: asset-pipeline MCP 서버를 직접 띄워 generate(후보 여러 개) → 사람이 고르면 pick
+  experiment.mjs           (v3 P0) 실험 카드·조사 노트 lint: 반증 조건, 측정, GDD에 건 섹션, 칸과 측정의 짝, 범위
   setup.mjs                게임 저장소에 설치
   lib/                     외부 모델 CLI를 읽기 전용 전문가로 부르는 공통 부분(hyperfusion에서 옮겨 옴)
     cli.mjs                플래그 확인, 결과 JSON 꺼내기, 읽기 전용 지시문, 호출(invoke)
@@ -42,9 +43,10 @@ tools/                     게임 저장소의 tools/hfgs/로 복사되는 수�
 templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
 templates/phaser/          웹 프로토타입 템플릿(Phaser 4 + Vite + TypeScript + Vitest). setup --phaser로 prototype/에 깐다
 templates/godot/           Godot 4.7 본편 템플릿(gdUnit4, Dialogic 2, Aseprite Wizard, godot-ai). setup --godot으로 저장소 루트에 깐다
-skills/gs-*                게임 저장소에 설치되는 리드 검토 스킬(밸런스, 설계, 범위)
+skills/gs-*                게임 저장소에 설치되는 리드 스킬: 검토(밸런스, 설계, 범위)와 실험(점검, 조사, 실험 카드)
+schemas/                   실험 카드와 조사 노트의 형식(experiment.mjs lint가 읽음. 게임 저장소에는 복사하지 않는다)
 examples/                  첫 마일스톤(milestone-1.md)과 작업 파일 예시(tasks/)
-docs/design/               설계 문서. game-studio-v2.md 끝에 마일스톤별 실측 마찰과 반영 내용이 있다
+docs/design/               설계 문서. game-studio-v2.md 끝에 마일스톤별 실측 마찰과 반영 내용이 있다. game-studio-v3.md는 실험 주도 층의 설계(초안, P0 진행 중)
 ```
 
 ## 설치

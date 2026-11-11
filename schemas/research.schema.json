@@ -1,0 +1,41 @@
+{
+  "$comment": "조사 노트(design/research/RQ-NNN-<slug>.json). 질문 하나에 파일 하나. 원문은 옮겨 적지 않고 주장을 리드의 말로 한 문장씩 적는다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "question", "refs", "findings", "stopped_because"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^RQ-[0-9]{3}$"},
+    "question": {"type": "string", "minLength": 10},
+    "refs": {
+      "type": "array", "x-uniqueBy": "id",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "url", "retrieved_at", "source_type", "evidence_kind", "claim"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^REF-[0-9]+$"},
+          "url": {"type": "string", "pattern": "^https?://"},
+          "retrieved_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+          "source_type": {"enum": ["official", "developer", "review", "player", "video", "paper"]},
+          "evidence_kind": {"enum": ["observed", "reported", "inferred"]},
+          "claim": {"type": "string", "minLength": 10, "maxLength": 300}
+        }
+      }
+    },
+    "findings": {
+      "type": "array", "minItems": 1, "x-uniqueBy": "id",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "statement", "refs"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^F[0-9]+$"},
+          "kind": {"enum": ["pattern", "anti-pattern", "open"]},
+          "statement": {"type": "string", "minLength": 10},
+          "refs": {"type": "array", "items": {"type": "string", "pattern": "^REF-[0-9]+$"}}
+        }
+      }
+    },
+    "stopped_because": {"type": "string", "minLength": 5}
+  }
+}
