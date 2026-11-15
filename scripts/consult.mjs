@@ -72,6 +72,9 @@ const REVIEW_ORDERS=[
  'verdict: pass only if every success criterion is met by code you read and nothing in scope regresses; redo when the change must be fixed; decision only when requirements are ambiguous and a human must choose.',
  'For anything but pass, blocking_criteria lists each unmet criterion id (e.g. AC2) or a short concrete defect. Every finding needs a repository-relative file and a 1-based line (0 only when not tied to a line).',
  'severity: blocker breaks a success criterion, major is a real bug or risk, minor is worth fixing, nit is style. A redo counts only with at least one blocker or major finding at a real line.',
+ // hyperfusion 0.31.0·0.33.0에서 옮김: 리뷰어가 구현만 보고 테스트가 기준을 실제로 검사하는지는 보지 않았고, {text:null}과 키 없음의 차이도 놓쳤다.
+ 'Check the tests and checks this change adds or relies on against every success criterion: report a criterion no test exercises, an assertion that is always true, and a test that would still pass with a wrong implementation. A passing controller check proves only what that check asserts.',
+ 'Check the boundaries the change handles: null and undefined (a missing key versus null), empty strings, arrays and objects, zero, negative and limit numbers, every enum value and both booleans, repeated runs, and non-ASCII text. Skip kinds the change does not touch. Report an unhandled boundary that a success criterion depends on.',
  'Report only what you verified by reading. When evidence is thin, say so in summary and lower confidence.',
  'Your FINAL message must be only the JSON object matching result_schema. Write summary, issue and suggestion in Korean.'
 ];
@@ -109,9 +112,12 @@ function saveReport(report,dir=reportsDir()){
 // 모델 쪽 일시 오류(용량 초과·과부하)는 한 번만 다시 부른다. 마일스톤 2에서 Codex가 'Selected model is at capacity'로
 // 실패했고 바로 다시 돌리니 통과했다. 두 번째도 실패하면 다른 리뷰어·작가로 바꾸라고 알린다.
 export const TRANSIENT=/at capacity|overloaded|rate limit/i;
+// 사용량·요금 한도는 일시 오류가 아니다. 보통 몇 시간 단위로 풀리고 그사이 재시도는 같은 실패를 되풀이한다(hyperfusion 0.32.0에서 옮김).
+export const USAGE_LIMIT=/usage[ _-]?limit|insufficient[ _-]?quota|exceeded (?:your|the) (?:current )?quota|quota (?:exceeded|exhausted)|resource[ _-]?exhausted|out of credits|credit balance is too low/i;
 export function retrying(run,{log=console.error,other='다른 계열(--reviewer agy 등)'}={}){
  try{return run();}
  catch(e){
+  if(USAGE_LIMIT.test(e.message)){e.message+=` (사용량 한도: 다시 불러도 같다. ${other}로 바꿀 것)`;throw e;}
   if(!TRANSIENT.test(e.message))throw e;
   log(`일시 오류라 한 번 다시 부름: ${e.message.slice(0,200)}`);
   try{return run();}

@@ -69,11 +69,12 @@ export function strictSchema(schema){
 export const SANDBOX_FAILURE=/CreateProcess(?:AsUser|WithLogon)W failed: (?:5|1312)\b|setup refresh (?:failed|had errors)|helper_unknown_error/i;
 export const WINDOWS_SANDBOX_ENV='HFGS_CODEX_WINDOWS_SANDBOX';
 export const SANDBOX_HINT='pwsh가 WindowsApps 아래의 패키지판(Store/MSIX)이면 제거하고(Get-AppxPackage Microsoft.PowerShell | Remove-AppxPackage) '
- +`PowerShell GitHub 릴리스의 MSI판을 설치할 것. 또는 ${WINDOWS_SANDBOX_ENV}=unelevated로 다시 시도(격리가 약해짐). 그대로 다시 돌리면 같은 이유로 실패한다`;
+ +`PowerShell GitHub 릴리스의 MSI판을 설치할 것. 또는 호환되는 Windows 11이면 ${WINDOWS_SANDBOX_ENV}=mxc(관리자 설정 없음), 아니면 ${WINDOWS_SANDBOX_ENV}=unelevated로 다시 시도(격리가 약해짐). 그대로 다시 돌리면 같은 이유로 실패한다`;
 export function windowsSandboxArgs(env=process.env){
  const v=env[WINDOWS_SANDBOX_ENV];
  if(v===undefined||v==='')return [];
- if(!['elevated','unelevated'].includes(v))throw Error(`${WINDOWS_SANDBOX_ENV}는 elevated 또는 unelevated`);
+ // mxc는 관리자 설정 없이 쓰는 Windows 11 컨테이너 격리다. unelevated에서 하위 프로세스가 막히는 PC에서 mxc는 됐다(hyperfusion 0.31.0 실측).
+ if(!['mxc','elevated','unelevated'].includes(v))throw Error(`${WINDOWS_SANDBOX_ENV}는 mxc, elevated, unelevated 중 하나`);
  return ['-c',`windows.sandbox="${v}"`];
 }
 

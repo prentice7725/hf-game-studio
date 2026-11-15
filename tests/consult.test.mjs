@@ -79,6 +79,20 @@ test('retrying: 용량 초과는 한 번만 다시 부르고, 다른 오류는 �
  assert.equal(calls,1);
 });
 
+test('retrying: 사용량 한도는 다시 부르지 않고 다른 계열로 바꾸라고 알린다',()=>{
+ for(const text of ['You have hit your usage limit','insufficient_quota','RESOURCE_EXHAUSTED','credit balance is too low']){
+  let calls=0;
+  assert.throws(()=>retrying(()=>{calls++;throw Error('codex: '+text);},{log:()=>{}}),/사용량 한도.*--reviewer agy/);
+  assert.equal(calls,1);
+ }
+});
+
+test('reviewPrompt: 테스트가 기준을 검사하는지와 경계값을 보라고 시킨다',()=>{
+ const p=JSON.parse(reviewPrompt({criteria:['AC1: x'],base:'main',diff:'',untracked:[],changed:[],checks:[],reviewer:'codex'}));
+ assert.ok(p.instructions.some(i=>/no test exercises/.test(i)&&/always true/.test(i)));
+ assert.ok(p.instructions.some(i=>/missing key versus null/.test(i)));
+});
+
 test('judge: 줄 번호 있는 blocker·major가 없는 redo는 권고',()=>{
  assert.deepEqual(judge({verdict:'redo',findings:[{severity:'minor',line:3}]}),{verdict:'redo',advisory:true});
  assert.deepEqual(judge({verdict:'redo',findings:[{severity:'major',line:0}]}),{verdict:'redo',advisory:true});
