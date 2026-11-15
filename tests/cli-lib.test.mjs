@@ -20,6 +20,10 @@ test('extractResult: 본문 전체, 마지막 json 블록, 끝에 붙은 객체�
  assert.deepEqual(extractResult(' {"a":1} '),{a:1});
  assert.deepEqual(extractResult('설명\n```json\n{"a":1}\n```\n다시\n```json\n{"a":2}\n```'),{a:2});
  assert.deepEqual(extractResult('untouched.{"a":{"b":"}"}}'),{a:{b:'}'}});
+ // 문자열 안의 외톨이 역슬래시만 고친다. 올바른 이스케이프는 그대로, 다른 문법 오류는 계속 거절.
+ assert.deepEqual(extractResult('{"a":"x \\ y","b":"줄\\n바꿈 \\u00e9 \\\\"}'),{a:'x \\ y',b:'줄\n바꿈 é \\'});
+ assert.deepEqual(extractResult('설명.{"a":"C:\\dir"}'),{a:'C:\\dir'});
+ assert.throws(()=>extractResult('```json\n{"a":1,}\n```'),/형식이 깨짐/);
  assert.throws(()=>extractResult('결과 없음'),/결과 JSON이 없음/);
  assert.throws(()=>extractResult('  '),/비어 있음/);
 });

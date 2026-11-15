@@ -37,6 +37,7 @@ test('codex: JSONL에서 최종 메시지를 꺼내고 샌드박스 실패는 �
 test('codex: Windows 샌드박스 모드는 운영자 환경변수로만',()=>{
  assert.deepEqual(codex.windowsSandboxArgs({}),[]);
  assert.deepEqual(codex.windowsSandboxArgs({[codex.WINDOWS_SANDBOX_ENV]:'unelevated'}),['-c','windows.sandbox="unelevated"']);
+ assert.deepEqual(codex.windowsSandboxArgs({[codex.WINDOWS_SANDBOX_ENV]:'mxc'}),['-c','windows.sandbox="mxc"']);
  assert.throws(()=>codex.windowsSandboxArgs({[codex.WINDOWS_SANDBOX_ENV]:'off'}),/elevated/);
 });
 
