@@ -94,7 +94,7 @@ export function installGodot(repo,{root=STUDIO_ROOT,log=console.log}={}){
  return done;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  // --phaser는 기본 폴더(prototype), --phaser=폴더 는 그 폴더. 저장소 경로와 섞이지 않게 값은 =로만 받는다.
  const args=process.argv.slice(2),force=args.includes('--force');
  const phaserFlag=args.find(a=>a==='--phaser'||a.startsWith('--phaser='));

@@ -188,6 +188,6 @@ function main(){
  return r.errors.length?1:0;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  try{process.exit(main());}catch(e){console.error('오류: '+e.message);process.exit(2);}
 }

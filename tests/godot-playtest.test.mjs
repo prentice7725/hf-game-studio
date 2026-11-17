@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {runScenario,checkScenario,judgeExpect,judgeVisible,matches} from '../tools/godot-playtest.mjs';
+import {runScenario,checkScenario,judgeExpect,judgeVisible,matches,canvasToWindow} from '../tools/godot-playtest.mjs';
 
 const rect=(x,y)=>({position:{x,y},size:{x:100,y:20}});
 // 대사 대본: 줄은 Enter로, 선택지는 클릭으로 넘어간다. 끝나면 대사창이 사라지고 라벨이 바뀐다.
@@ -95,4 +95,40 @@ test('checkScenario·judgeExpect: 형식, 배열은 그중 하나',()=>{
  assert.deepEqual(judgeVisible('Portrait',[{name:'Portrait',visible:false,global_rect:rect(0,0)}]),{ok:false,missing:['Portrait']});
  assert.deepEqual(judgeVisible(['Portrait'],[{name:'Portrait',global_rect:rect(0,0)}]),{ok:true,missing:[]});
  assert.throws(()=>matches(3,'3'),/expect 값은/);
+});
+
+test('canvasToWindow: 캔버스 좌표를 Godot stretch 규칙대로 창 좌표로 바꾼다',()=>{
+ const win=(size,cs,mode=1,aspect=1,factor=1)=>({size:{x:size[0],y:size[1]},content_scale_size:{x:cs[0],y:cs[1]},content_scale_mode:mode,content_scale_aspect:aspect,content_scale_factor:factor});
+ const near=(got,want)=>{assert.ok(Math.abs(got.x-want.x)<1e-6&&Math.abs(got.y-want.y)<1e-6,`${JSON.stringify(got)} != ${JSON.stringify(want)}`);};
+ // 보고된 경우: 캔버스 1920×1080, 창 1600×900(같은 비율)
+ near(canvasToWindow(win([1600,900],[1920,1080]))({x:960,y:540}),{x:800,y:450});
+ near(canvasToWindow(win([1600,900],[1920,1080],2))({x:1920,y:1080}),{x:1600,y:900},'viewport 모드도 같은 변환');
+ // keep, 화면이 더 넓음: 좌우 여백
+ near(canvasToWindow(win([2000,900],[1600,900]))({x:0,y:0}),{x:200,y:0});
+ // keep, 화면이 더 높음: 위아래 여백
+ near(canvasToWindow(win([1600,1200],[1600,900]))({x:800,y:0}),{x:800,y:150});
+ // expand: 여백 없이 캔버스가 늘어남
+ near(canvasToWindow(win([2000,900],[1600,900],1,4))({x:100,y:100}),{x:100,y:100});
+ // ignore: 축마다 따로 늘림
+ near(canvasToWindow(win([800,900],[1600,900],1,0))({x:100,y:100}),{x:50,y:100});
+ // stretch 꺼짐·정보 없음: 그대로
+ near(canvasToWindow(win([1600,900],[1920,1080],0))({x:10,y:20}),{x:10,y:20});
+ near(canvasToWindow(undefined)({x:10,y:20}),{x:10,y:20});
+});
+
+test('runScenario: 누를 때 루트 창 정보를 읽어 창 좌표로 누른다',async()=>{
+ const pressed=[];
+ const call=async(name,args)=>{
+  if(name==='game_manage'&&args.op==='get_ui_elements')return {text:JSON.stringify({elements:[{name:'Go',path:'/Main/Go',type:'Button',text:'가기',visible:true,global_rect:{position:{x:900,y:500},size:{x:120,y:80}}}]})};
+  if(name==='game_manage'&&args.op==='get_node_info'){
+   assert.equal(args.params.path,'/root/.');
+   return {text:JSON.stringify({found:true,properties:{size:{x:1600,y:900},content_scale_size:{x:1920,y:1080},content_scale_mode:1,content_scale_aspect:1,content_scale_factor:1}})};
+  }
+  if(name==='game_manage'&&args.op==='input_mouse')pressed.push(args.params.position);
+  return {text:'{}'};
+ };
+ const r=await runScenario(checkScenario({name:'go',steps:[{click:'가기'}]}),{call,log:()=>{},sleep:async()=>{}});
+ assert.deepEqual(r,{ok:true,problems:[]});
+ assert.equal(pressed.length,3);
+ for(const p of pressed){assert.ok(Math.abs(p.x-800)<1e-6&&Math.abs(p.y-450)<1e-6,JSON.stringify(p));}
 });

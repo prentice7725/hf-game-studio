@@ -319,6 +319,6 @@ async function main(argv){
  }finally{client.close();}
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  main(process.argv.slice(2)).then(code=>process.exit(code),e=>{console.error(e.message);process.exit(e.usage===false?1:2);});
 }

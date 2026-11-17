@@ -176,7 +176,7 @@ function main(argv){
  return violations.length?1:0;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  try{process.exit(main(process.argv.slice(2)));}
  catch(e){console.error(`오류: ${e.message}`);process.exit(2);}
 }

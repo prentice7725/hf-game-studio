@@ -104,7 +104,7 @@ export function installAddons(project,{only,force=false,clone=gitClone,log=conso
  return done;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  const args=process.argv.slice(2);
  let project,only,force=false;
  for(let i=0;i<args.length;i++){
