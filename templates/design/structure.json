@@ -1,0 +1,27 @@
+{
+  "$comment": "구조 검사(tools/hfgs/check-structure.mjs) 설정. 규칙 코드는 순수 함수로 두고 화면 코드·난수·시계를 쓰지 않는다. task.mjs가 web-prototype·code·godot-code·godot-scene 작업의 정적 검사로 돌리고, 이 파일은 검사 기준 파일이라 작업 범위에 둘 수 없다. 규칙을 바꿔야 하면 별도 작업으로 고친다.",
+  "version": 1,
+  "layers": [
+    {
+      "name": "prototype-rules",
+      "files": ["prototype/src/rules/**/*.ts"],
+      "exclude": ["**/*.test.ts"],
+      "forbid_imports": ["phaser", "prototype/src/scenes/**", "prototype/src/ui/**"],
+      "forbid_patterns": [
+        {"pattern": "Math\\.random\\(", "why": "난수는 인자로 받는다"},
+        {"pattern": "Date\\.now\\(|new Date\\(", "why": "시각은 인자로 받는다"},
+        {"pattern": "@ts-ignore|@ts-expect-error", "why": "타입 오류는 고친다", "in_comments": true}
+      ]
+    },
+    {
+      "name": "godot-rules",
+      "files": ["scripts/rules/**/*.gd"],
+      "forbid_patterns": [
+        {"pattern": "^extends\\s+(Node|Control|CanvasItem)", "why": "규칙은 장면 노드가 아니다"},
+        {"pattern": "get_node\\(|\\$[A-Za-z\"]", "why": "규칙은 장면 트리를 읽지 않는다"},
+        {"pattern": "\\brandf\\(|\\brandi\\(|\\brandf_range\\(|\\brandi_range\\(", "why": "난수는 인자로 받는다"},
+        {"pattern": "res://scenes/", "why": "규칙은 장면을 불러오지 않는다"}
+      ]
+    }
+  ]
+}

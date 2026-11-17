@@ -81,11 +81,11 @@ const REVIEW_ORDERS=[
 // agy는 프롬프트를 명령줄로만 받아(Windows 32,767자) diff를 작게 넣는다. 나머지는 파일을 직접 읽게 한다.
 const DIFF_MAX={codex:200000,grok:200000,agy:12000};
 
-export function reviewPrompt({criteria,base,diff,untracked,changed,checks,reviewer}){
+export function reviewPrompt({criteria,base,diff,untracked,changed,checks,notes=[],reviewer}){
  const max=DIFF_MAX[reviewer]??50000,cut=diff.length>max;
  return JSON.stringify({task:'review',success_criteria:criteria,base_ref:base,changed_files:changed,untracked_new_files:untracked,
   diff:cut?diff.slice(0,max):diff,...(cut?{diff_truncated:`diff is ${diff.length} chars; only the first ${max} are shown. Read the changed files directly for the rest.`}:{}),
-  controller_checks:checks,result_schema:REVIEW_SCHEMA,instructions:[...REVIEW_ORDERS,...readOnlyOrders(ADAPTERS[reviewer].reader)]});
+  controller_checks:checks,...(notes.length?{controller_notes:notes}:{}),result_schema:REVIEW_SCHEMA,instructions:[...REVIEW_ORDERS,...readOnlyOrders(ADAPTERS[reviewer].reader)]});
 }
 
 // 반려 근거가 없는 redo는 권고로만 본다. 줄 번호 있는 blocker·major 지적이 있어야 고칠 대상이 분명하다.
@@ -140,10 +140,15 @@ export function reviewInputFromTask(taskId,{env=process.env}={}){
  if(!fs.existsSync(file))fail(`작업 기록 없음: ${file} (task.mjs start·verify를 먼저)`);
  const state=JSON.parse(fs.readFileSync(file,'utf8'));
  if(!state.verify?.ok)fail(`verify를 통과하지 않은 작업: ${taskId}. task.mjs verify가 통과한 뒤 리뷰할 것`);
- return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:state.plan.acceptance_commands};
+ // 정적 검사(타입·구조) 결과도 넘겨 리뷰어가 타입 오류를 다시 찾지 않게 한다. 예전 기록에는 static_commands가 없다.
+ const notes=[
+  ...(state.plan.no_visual_check?[`No visual check was run for this task (the author's stated reason: ${state.plan.no_visual_check}). Judge whether the change really leaves the screen unchanged.`]:[]),
+  ...(state.plan.static_off?[`Automatic static checks were turned off for this task (the author's stated reason: ${state.plan.static_off}).`]:[])
+ ];
+ return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:[...(state.plan.static_commands??[]),...state.plan.acceptance_commands],notes};
 }
 
-export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
+export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],notes=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
  const adapter=ADAPTERS[reviewer];
  if(!adapter)fail(`알 수 없는 리뷰어: ${reviewer} (가능: ${Object.keys(ADAPTERS).join(', ')})`);
  if(!criteria.length)fail('성공 기준이 필요함: --criteria "AC1: ..." 또는 --criteria-file');
@@ -161,7 +166,7 @@ export function review({repo,base,reviewer='codex',author='claude',authorModel,c
  const checks=runChecks(repo,commands,{spawn});
  // 검사가 파일을 만들거나 고칠 수 있으므로 diff와 목록은 검사가 끝난 뒤의 상태로 다시 받는다. 리뷰어가 보는 것과 작업 트리 비교의 기준이 같아진다.
  const {diff,changed,untracked}=commands.length?changes(repo,base,git):before;
- const prompt=reviewPrompt({criteria,base,diff,untracked,changed,checks,reviewer});
+ const prompt=reviewPrompt({criteria,base,diff,untracked,changed,checks,notes,reviewer});
  const r=guarded(repo,()=>retrying(()=>invoke(adapter,{repo,prompt,schema:REVIEW_SCHEMA,options})),{git});
  const {verdict,advisory}=judge(r.result);
  const report={kind:'review',created_at:new Date().toISOString(),repo,base,head:git(repo,['rev-parse','HEAD']).trim(),adapter:reviewer,model:reviewerModel,author,author_model:authorModel??null,

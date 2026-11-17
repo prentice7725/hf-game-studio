@@ -19,7 +19,7 @@ test('Git 저장소가 아니면 거절',()=>{
 test('처음 설치는 도구·문서·스킬을 깔고 hyperfusion 설정은 만들지 않는다',()=>{
  const repo=gitRepo(),done=install(repo,{log:()=>{}});
  for(const f of ['tools/hfgs/validate-data.mjs','tools/hfgs/check-assets.mjs','tools/hfgs/dialogue-to-dtl.mjs','tools/hfgs/screenshot.mjs',
-  'design/glossary.md','design/schemas/dialogue.schema.json','design/asset-manifest.json','.claude/skills/gs-balance-check/SKILL.md'])
+  'tools/hfgs/check-structure.mjs','design/structure.json','design/glossary.md','design/schemas/dialogue.schema.json','design/asset-manifest.json','.claude/skills/gs-balance-check/SKILL.md'])
   assert.ok(done.includes(f),f);
  assert.ok(!fs.existsSync(path.join(repo,'hyperfusion.config.json')));
 });

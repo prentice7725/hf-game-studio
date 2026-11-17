@@ -14,6 +14,13 @@ _피할 말_: 실패한 검사(exit 1은 결과가 틀린 것).
 
 **red-first**: start가 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패하는지 확인하는 것. 모두 통과하면 그 검사는 결과를 가르지 못한다. 고장 난 검사는 실패로 세지 않는다.
 
-**검사 기준 파일 (criteria file)**: 스키마·매니페스트·용어집·참조 이미지처럼 수용 검사가 기준으로 삼는 파일. 작업 범위 밖에 두고, verify에서 바뀌지 않았는지 본다.
+**정적 검사 (static check)**: 타입 검사·구조 검사처럼 작업과 상관없이 언제나 통과해야 하는 검사. 작업 파일의 `static_commands`와 작업 종류가 조건에 따라 자동으로 만드는 것(`game-kinds.json`의 `static`)이다. 수용 검사와 반대로 start 때 통과해야 하고(아니면 `STATIC_BASELINE_FAILING`·`STATIC_BROKEN`·`STATIC_DIRTY`), verify에서도 통과해야 한다. 수용 기준 판정에는 들어가지 않는다.
+_피할 말_: 기준선 검사(red-first의 기준선과 헷갈림).
+
+**구조 검사 (structure check)**: `tools/check-structure.mjs`가 `design/structure.json`대로 규칙 코드가 화면 코드·난수·시계를 쓰지 않는지 줄 단위로 보는 정적 검사.
+
+**화면 검사 (visual check)**: 화면을 띄워 확인하는 수용 검사(`screenshot.mjs`, `godot-playtest.mjs`, `godot-check.mjs shot`). web-prototype·godot-scene 작업은 이것이 있거나 `no_visual_check`에 이유를 적어야 한다. verify가 통과하면 그 출력의 스크린샷 경로와 해시가 화면 증거(`verify.evidence`)로 남는다.
+
+**검사 기준 파일 (criteria file)**: 스키마·매니페스트·용어집·참조 이미지·정적 검사의 설정 파일처럼 검사가 기준으로 삼는 파일. 작업 범위 밖에 두고, verify에서 바뀌지 않았는지 본다.
 
 **작업 기록 (task record)**: `HFGS_HOME/tasks/<task_id>.json`. start의 기준선, verify 결과와 그때의 plan·리뷰 기준 커밋을 담는다. `consult.mjs review --task`가 이것을 읽는다.

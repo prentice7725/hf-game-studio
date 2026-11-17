@@ -1,5 +1,5 @@
 {
-  "$comment": "게임 작업 종류. hf-game-studio가 직접 정의한다. owner는 결과물을 만드는 쪽(claude: 리드가 직접 구현, asset-pipeline: 리드가 MCP로 생성), writer는 글을 쓰는 전문가 모델(argon: Gemini Argon을 consult.mjs write로 부르고 리드가 검수). verify는 task.mjs가 자동으로 만드는 수용 검사, require는 작업 파일에 있어야 하는 필드, rules는 리드(와 작가 모델)가 따르는 규칙이다.",
+  "$comment": "게임 작업 종류. hf-game-studio가 직접 정의한다. owner는 결과물을 만드는 쪽(claude: 리드가 직접 구현, asset-pipeline: 리드가 MCP로 생성), writer는 글을 쓰는 전문가 모델(argon: Gemini Argon을 consult.mjs write로 부르고 리드가 검수). verify는 task.mjs가 자동으로 만드는 수용 검사, static은 조건이 맞을 때 자동으로 만드는 정적 검사(typecheck: prototype/package.json에 typecheck 스크립트가 있을 때, structure: design/structure.json이 있을 때), visual_check는 있어야 하는 화면 검사(screenshot: screenshot 필드, godot: godot-playtest.mjs나 godot-check.mjs shot 수용 검사. 화면이 바뀌지 않는 작업은 no_visual_check에 이유),require는 작업 파일에 있어야 하는 필드, rules는 리드(와 작가 모델)가 따르는 규칙이다.",
   "kinds": {
     "gdd": {
       "owner": "claude",
@@ -124,6 +124,8 @@
       "owner": "claude",
       "role": "ui-programmer",
       "verify": "screenshot",
+      "static": ["typecheck", "structure"],
+      "visual_check": "screenshot",
       "rules": [
         "Rules logic lives in plain functions with unit tests; the scene only renders and forwards input.",
         "Read numbers, text and dialogue from the same data files Godot will read; never hard-code them."
@@ -134,6 +136,7 @@
       "owner": "claude",
       "role": "gameplay-programmer",
       "verify": "godot",
+      "static": ["structure"],
       "rules": [
         "Rules live in static functions under scripts/rules/ with gdUnit4 tests; scenes only draw and forward input.",
         "Read numbers, text and dialogue from data/ and dialogue/; never hard-code them. Keep formulas identical to the web prototype's rules."
@@ -144,6 +147,8 @@
       "owner": "claude",
       "role": "ui-programmer",
       "verify": "godot",
+      "static": ["structure"],
+      "visual_check": "godot",
       "rules": [
         "Scenes read game state from scripts/ and never compute rules themselves.",
         "Put only approved assets into scenes; placeholders until the user approves.",
@@ -154,6 +159,7 @@
       "$comment": "그 밖의 코드 작업(규칙 로직, 테스트, 리팩터). 수용 검사는 acceptance_commands에 테스트 명령으로 적는다.",
       "owner": "claude",
       "role": "gameplay-programmer",
+      "static": ["structure"],
       "rules": []
     }
   },

@@ -395,7 +395,8 @@ test('godot-scene: schema·expect가 있으면 데이터 검사를 자동으로 
  const repo=repoWithDocs();
  const task={task_id:'board',kind:'godot-scene',objective:'x',success_criteria:['AC1: x'],
   scope:{paths:['scripts/main.gd','data/mercenaries.json','test/playtest/accept.json']},
-  schema:'design/schemas/mercenaries.schema.json',expect:{'/mercenaries/0/portrait':'assets/portraits/merc-ash.png'}};
+  schema:'design/schemas/mercenaries.schema.json',expect:{'/mercenaries/0/portrait':'assets/portraits/merc-ash.png'},
+  no_visual_check:'데이터 검사 자동 생성만 보는 사례'};
  const p=plan(task,{repo});
  assert.equal(shown(p)[0],'node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json --expect "/mercenaries/0/portrait=\\"assets/portraits/merc-ash.png\\""');
  assert.equal(shown(p)[1],'node tools/hfgs/godot-check.mjs all');
@@ -434,4 +435,142 @@ test('verify --base: 리뷰 기준을 시작 커밋 뒤의 커밋으로 바꾸�
  // 시작 커밋보다 앞선 커밋을 주면 리뷰 diff에 작업과 무관한 변경(prep.md)이 섞인다.
  assert.throws(()=>verify(task,{repo:dir,env,base:first}),/시작 커밋.*이어진 커밋이 아님/);
  assert.throws(()=>verify(task,{repo:dir,env,base:'nope'}),/rev-parse/);
+});
+
+// ── 정적 검사(M1)·구조 검사 자동 연결(M2)·화면 검사(M4) ──
+
+// gameRepo에 코드 작업. 수용 검사는 out.txt가 생기면 통과하는 테스트다(red-first).
+const node=code=>['node','-e',code];
+const RED=node("process.exit(require('fs').existsSync('out.txt')?0:1)");
+const codeTask=(over={})=>({task_id:'static-t',kind:'code',objective:'x',scope:{paths:['out.txt']},success_criteria:['AC1: out.txt'],acceptance_commands:[RED],...over});
+const STRUCTURE='node tools/hfgs/check-structure.mjs design/structure.json';
+
+test('모든 kind의 static·visual_check는 아는 이름이다',()=>{
+ for(const [name,k] of Object.entries(loadKinds().kinds)){
+  for(const s of k.static??[])assert.ok(['typecheck','structure'].includes(s),`${name}: static ${s}`);
+  assert.ok(k.visual_check===undefined||['screenshot','godot'].includes(k.visual_check),`${name}: visual_check`);
+ }
+});
+
+test('정적 검사: 조건이 맞을 때만 자동으로 만들고, 설정 파일은 검사 기준 파일이 된다',()=>{
+ const repo=repoWithDocs();
+ assert.deepEqual(plan(example('merc-data.json'),{repo}).static_commands,[],'자동 정적 검사가 없는 종류');
+ assert.deepEqual(plan(codeTask(),{repo}).static_commands,[],'design/structure.json이 없으면 만들지 않는다');
+ fs.copyFileSync(path.join(STUDIO_ROOT,'templates','design','structure.json'),path.join(repo,'design','structure.json'));
+ const p=plan(codeTask(),{repo});
+ assert.deepEqual(p.static_commands.map(displayCheck),[STRUCTURE]);
+ assert.deepEqual(p.criteria_files,['design/structure.json']);
+ assert.throws(()=>plan(codeTask({scope:{paths:['out.txt','design/structure.json']}}),{repo}),/검사 기준 파일\(design\/structure\.json\)이 scope\.paths에 있음/);
+ // web-prototype: prototype/package.json에 typecheck 스크립트가 있을 때만 타입 검사를 더한다.
+ const web=example('contract-board-ui.json');
+ assert.deepEqual(plan(web,{repo}).static_commands.map(displayCheck),[STRUCTURE]);
+ fs.cpSync(path.join(STUDIO_ROOT,'templates','phaser'),path.join(repo,'prototype'),{recursive:true});
+ const w=plan(web,{repo});
+ assert.deepEqual(w.static_commands.map(displayCheck),['npm --prefix prototype run typecheck',STRUCTURE]);
+ assert.deepEqual(w.criteria_files,['prototype/tsconfig.json','design/structure.json']);
+});
+
+test('정적 검사: static_commands·static_config·static_off 형식과 끄기',()=>{
+ const repo=repoWithDocs();
+ fs.copyFileSync(path.join(STUDIO_ROOT,'templates','design','structure.json'),path.join(repo,'design','structure.json'));
+ const lint=['npx','eslint','src'];
+ const p=plan(codeTask({static_commands:[lint],static_config:['eslint.config.js']}),{repo});
+ assert.deepEqual(p.static_commands.map(displayCheck),['npx eslint src',STRUCTURE],'적은 것 + 자동 검사');
+ assert.deepEqual(p.criteria_files,['eslint.config.js','design/structure.json']);
+ assert.throws(()=>plan(codeTask({static_config:['eslint.config.js'],scope:{paths:['out.txt','eslint.config.js']}}),{repo}),/scope\.paths에 있음/);
+ assert.throws(()=>plan(codeTask({static_commands:[]}),{repo}),/static_off에 이유/);
+ const off=plan(codeTask({static_commands:[],static_off:'템플릿을 아직 깔지 않은 저장소'}),{repo});
+ assert.deepEqual(off.static_commands,[]);
+ assert.equal(off.static_off,'템플릿을 아직 깔지 않은 저장소');
+ assert.deepEqual(off.criteria_files,[],'끈 자동 검사의 설정 파일은 기준 파일이 아니다');
+ assert.throws(()=>plan(codeTask({static_off:'x'}),{repo}),/static_off는 "static_commands": \[\]와 함께/);
+ assert.throws(()=>plan(codeTask({static_commands:'npm run lint'}),{repo}),/static_commands는 배열/);
+ assert.throws(()=>plan(codeTask({static_commands:[[]]}),{repo}),/static_commands: 수용 검사는/);
+ assert.throws(()=>plan(codeTask({static_config:['/abs/x.json']}),{repo}),/static_config/);
+ assert.throws(()=>plan(codeTask({static_commands:[RED]}),{repo}),/정적 검사와 수용 검사에 모두 있음/);
+});
+
+test('start: 정적 검사가 시작 전에 실패·고장·파일 변경이면 각각의 코드로 거절하고, 통과하면 기록한다',t=>{
+ const {dir,env}=gameRepo(t);
+ const reject=(cmd,re)=>{
+  assert.throws(()=>start(codeTask({static_commands:[cmd]}),{repo:dir,env}),re);
+  assert.equal(fs.existsSync(stateFile('static-t',env)),false,'거절하면 작업 기록을 남기지 않는다');
+ };
+ reject(node("console.log('type error in a.ts');process.exit(1)"),e=>/STATIC_BASELINE_FAILING/.test(e.message)&&/type error in a\.ts/.test(e.message));
+ reject(node('process.exit(2)'),/STATIC_BROKEN/);
+ reject(['no-such-linter-hfgs'],/STATIC_BROKEN/);
+ reject(node("require('fs').writeFileSync('fixed.txt','x')"),/STATIC_DIRTY: 정적 검사가 파일을 바꿈\(fixed\.txt\)/);
+ fs.rmSync(path.join(dir,'fixed.txt'));
+ const ok=node('process.exit(0)');
+ const {state}=start(codeTask({static_commands:[ok]}),{repo:dir,env});
+ // gameRepo에는 design/structure.json(템플릿)이 있어 구조 검사도 자동으로 돈다. 규칙 폴더가 아직 없으니 통과한다.
+ assert.deepEqual(state.static_baseline.map(r=>[r.command,r.exit_code]),[[displayCheck(ok),0],[STRUCTURE,0]]);
+ assert.deepEqual(state.baseline.red,[displayCheck(RED)]);
+});
+
+test('start: 정적 검사는 red-first를 대신하지 않는다',t=>{
+ const {dir,env}=gameRepo(t);
+ assert.throws(()=>start(codeTask({acceptance_commands:[node('process.exit(0)')],static_commands:[node('process.exit(0+0)')]}),{repo:dir,env}),/ACCEPTANCE_ALREADY_GREEN/);
+});
+
+test('check·verify: 정적 검사가 실패하면 수용 검사도 돌려 함께 보여 주고, verify는 통과가 아니다',t=>{
+ const {dir,env}=gameRepo(t);
+ const gate=node("process.exit(require('fs').existsSync('broken.flag')?1:0)");
+ const task=codeTask({static_commands:[gate],scope:{paths:['out.txt','broken.flag']}});
+ start(task,{repo:dir,env});
+ fs.writeFileSync(path.join(dir,'out.txt'),'x');fs.writeFileSync(path.join(dir,'broken.flag'),'');
+ const c=check(task,{repo:dir,env});
+ assert.equal(c.ok,false);
+ assert.deepEqual(c.static_results.map(r=>r.exit_code),[1,0]);
+ assert.deepEqual(c.results.map(r=>r.exit_code),[0],'정적 검사가 실패해도 수용 검사를 돌린다');
+ const v=verify(task,{repo:dir,env});
+ assert.equal(v.ok,false);
+ assert.deepEqual(v.static_failed,[displayCheck(gate)]);
+ assert.deepEqual(v.failed,[]);
+ assert.equal(JSON.parse(fs.readFileSync(stateFile('static-t',env),'utf8')).verify.ok,false,'리뷰(consult --task)는 verify 통과 기록만 받는다');
+ fs.rmSync(path.join(dir,'broken.flag'));
+ assert.equal(verify(task,{repo:dir,env}).ok,true);
+});
+
+test('verify: 작업 중 정적 검사 설정 파일을 고치면 실패한다',t=>{
+ const {dir,env}=gameRepo(t);
+ start(codeTask(),{repo:dir,env});
+ fs.writeFileSync(path.join(dir,'out.txt'),'x');
+ fs.writeFileSync(path.join(dir,'design','structure.json'),JSON.stringify({version:1,layers:[{name:'x',files:['none/*.ts'],forbid_patterns:[{pattern:'x',why:'y'}]}]}));
+ const v=verify(codeTask(),{repo:dir,env});
+ assert.equal(v.ok,false);
+ assert.ok(v.errors.some(e=>e.includes('검사 기준 파일이 바뀜: design/structure.json')),v.errors.join('\n'));
+});
+
+test('화면 검사: web-prototype은 screenshot, godot-scene은 플레이테스트나 shot이 없으면 VISUAL_CHECK_REQUIRED',()=>{
+ const repo=repoWithDocs(),web=example('contract-board-ui.json');
+ const noShot={...web,screenshot:undefined,acceptance_map:undefined};
+ assert.throws(()=>plan(noShot,{repo}),/VISUAL_CHECK_REQUIRED: web-prototype/);
+ assert.equal(plan({...noShot,no_visual_check:'규칙 함수만 고침'},{repo}).no_visual_check,'규칙 함수만 고침');
+ assert.throws(()=>plan({...noShot,no_visual_check:' '},{repo}),/no_visual_check에는/);
+ const scene={task_id:'scene',kind:'godot-scene',objective:'x',success_criteria:['AC1: x'],scope:{paths:['scenes/main.tscn']}};
+ assert.throws(()=>plan(scene,{repo}),/VISUAL_CHECK_REQUIRED: godot-scene/);
+ for(const cmd of [['node','tools/hfgs/godot-playtest.mjs','test/playtest/accept.json'],'node tools/hfgs/godot-check.mjs shot','node tools/hfgs/godot-check.mjs shot --project godot'])
+  assert.doesNotThrow(()=>plan({...scene,acceptance_commands:[cmd]},{repo}),JSON.stringify(cmd));
+ assert.throws(()=>plan({...scene,acceptance_commands:['node tools/hfgs/godot-check.mjs all']},{repo}),/VISUAL_CHECK_REQUIRED/);
+ assert.throws(()=>plan({...example('contract-rules-godot.json'),no_visual_check:'x'},{repo}),/web-prototype·godot-scene/);
+});
+
+test('verify: 통과한 화면 검사가 남긴 스크린샷의 경로와 해시를 증거로 기록한다',t=>{
+ const {dir,git,env}=gameRepo(t);
+ const shots=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-shots-'));
+ t.after(()=>fs.rmSync(shots,{recursive:true,force:true}));
+ const png=path.join(shots,'shot.png');
+ // 화면 검사 흉내: out.txt가 있으면 저장소 밖에 PNG를 쓰고 screenshot.mjs처럼 경로를 출력한다.
+ fs.mkdirSync(path.join(dir,'fake'));
+ fs.writeFileSync(path.join(dir,'fake','screenshot.mjs'),`import fs from 'node:fs';\nif(!fs.existsSync('out.txt'))process.exit(1);\nfs.writeFileSync(${JSON.stringify(png)},'png');\nconsole.log('스크린샷: '+${JSON.stringify(png)});\n`);
+ git('add','.');git('commit','-q','-m','fake');
+ const task=codeTask({acceptance_commands:[['node','fake/screenshot.mjs']]});
+ start(task,{repo:dir,env});
+ fs.writeFileSync(path.join(dir,'out.txt'),'x');
+ const v=verify(task,{repo:dir,env});
+ assert.equal(v.ok,true,JSON.stringify(v.results));
+ assert.deepEqual(v.evidence,[{command:'node fake/screenshot.mjs',file:slashPath(png),
+  sha256:'8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c'}]); // sha256('png')
+ assert.deepEqual(JSON.parse(fs.readFileSync(stateFile('static-t',env),'utf8')).verify.evidence,v.evidence);
 });
