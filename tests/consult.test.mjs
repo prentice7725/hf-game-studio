@@ -36,6 +36,11 @@ test('review --task: 정적 검사도 리뷰어에게 넘기고, 화면 검사�
  const prompt=JSON.parse(reviewPrompt({criteria:['AC1: x'],base:'aaa',diff:'',untracked:[],changed:[],checks:[],notes:input.notes,reviewer:'codex'}));
  assert.deepEqual(prompt.controller_notes,input.notes);
  assert.equal('controller_notes' in JSON.parse(reviewPrompt({criteria:['AC1: x'],base:'aaa',diff:'',untracked:[],changed:[],checks:[],reviewer:'codex'})),false);
+ // verify가 남긴 화면 증거 경로도 리뷰어에게 알린다(이미지를 읽을 수 있는 리뷰어는 연다).
+ fs.writeFileSync(path.join(home,'tasks','T2.json'),JSON.stringify({task_id:'T2',repo:'/r',head:'aaa',plan:{...plan,no_visual_check:undefined},verify:{ok:true,evidence:[{command:'x',file:'/h/screenshots/a.png',sha256:'0'}]}}));
+ const withShot=reviewInputFromTask('T2',{env}).notes;
+ assert.equal(withShot.length,1);
+ assert.match(withShot[0],/Visual evidence.*\/h\/screenshots\/a\.png/);
 });
 
 function repo(){

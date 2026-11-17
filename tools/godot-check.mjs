@@ -161,7 +161,9 @@ function main(){
   else{
    const {problems:p,files}=takeShot(bin,project,path.resolve(a.out??path.join(project,'shots')));
    problems=p;
-   for(const f of files)console.log(`프레임: ${f}`);
+   // 프레임은 여러 장이지만 화면 증거(task.mjs verify)와 리뷰 입력에는 마지막 한 장이면 된다. 나머지는 폴더와 장 수만 알린다.
+   if(files.length>1)console.log(`프레임 ${files.length}장: ${path.dirname(files.at(-1))}`);
+   if(files.length)console.log(`프레임: ${files.at(-1)}`);
   }
   if(problems.length){failed=true;console.error(`FAIL ${s}`);for(const p of problems)console.error('  '+p);}
   else console.log(`OK ${s}`);

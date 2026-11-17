@@ -7,7 +7,7 @@
 // --serve: 개발 서버를 이 도구가 직접 띄우고, --url이 응답할 때까지 기다렸다가 찍은 뒤 프로세스 트리째 종료한다.
 //   검사는 아무 때나 돌 수 있어야 하므로 떠 있는 서버에 기대지 않는다. 끝날 때 자식 프로세스를 남기지 않는다.
 // 실패 조건: 서버가 뜨지 않음, 페이지 오류(uncaught exception), 콘솔 error, 선택자 없음, 기대 문구 없음.
-// 스크린샷은 저장소 밖(임시 폴더, HFGS_SCREENSHOT_DIR로 변경)에 저장한다. 저장소 안에 쓰면 verify가 범위 밖 변경으로 본다.
+// 스크린샷은 저장소 밖(HFGS_HOME/screenshots, HFGS_SCREENSHOT_DIR로 변경)에 저장한다. 임시 폴더는 정리되면 화면 증거가 사라진다. 저장소 안에 쓰면 verify가 범위 밖 변경으로 본다.
 // Playwright가 대상 저장소나 전역에 설치되어 있어야 한다.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -120,7 +120,7 @@ async function capture(o){
    const text=await el.innerText();
    if(!text.includes(o.expectText))problems.push(`기대 문구 없음: ${JSON.stringify(o.expectText)}`);
   }
-  const dir=process.env.HFGS_SCREENSHOT_DIR??path.join(os.tmpdir(),'hfgs-screenshots');
+  const dir=process.env.HFGS_SCREENSHOT_DIR??path.join(process.env.HFGS_HOME??path.join(os.homedir(),'.hf-game-studio'),'screenshots');
   fs.mkdirSync(dir,{recursive:true});
   const name=(o.name??o.selector).replace(/[^\w.-]+/g,'_').slice(0,60)||'screen';
   const out=path.join(dir,`${name}-${Date.now()}.png`);
