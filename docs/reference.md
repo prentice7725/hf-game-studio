@@ -29,7 +29,8 @@ tools/                     게임 저장소의 tools/hfgs/로 복사되는 수�
   godot-addons.mjs         Godot 애드온을 고정 git 태그로 받아 addons/에 넣고 project.godot에 등록
   godot-check.mjs          Godot 검사: syntax(--check-only), test(gdUnit4), run(헤드리스 부팅), shot(xvfb 스크린샷)
   godot-playtest.mjs       godot-ai MCP로 떠 있는 에디터에서 시나리오(누르기·대사·선택지·글자·보임·스크린샷)대로 게임을 돌려 확인
-templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마)
+  check-structure.mjs      구조 검사: 규칙 폴더가 화면 코드·난수·시계·@ts-ignore·장면 트리를 쓰면 줄 번호와 함께 실패(design/structure.json)
+templates/design/          단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블, 애셋 매니페스트, 스키마, 구조 검사 설정)
 templates/phaser/          웹 프로토타입 템플릿(Phaser 4 + Vite + TypeScript + Vitest). setup --phaser로 prototype/에 깐다
 templates/godot/           Godot 4.7 본편 템플릿(gdUnit4, Dialogic 2, Aseprite Wizard, godot-ai). setup --godot으로 저장소 루트에 깐다
 skills/gs-*                게임 저장소에 설치되는 리드 스킬: 검토(밸런스, 설계, 범위)와 실험(점검, 조사, 실험 카드)
@@ -105,6 +106,8 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --task <task_id>`)을 �
 | `kind` | 아래 표의 작업 종류 |
 | `task_id`, `objective`, `scope.paths`, `success_criteria` | 필수. 수용 기준은 `AC1: ...`처럼 ID로 시작 |
 | `acceptance_commands`, `acceptance_map` | 직접 적는 검사(명령 문자열, 또는 셸 없이 그대로 도는 인자 배열 `["node","-e","..."]`)와 기준↔검사 연결. map은 검사를 표시 문자열이나 같은 배열로 가리키고, `"@auto"`는 자동으로 만든 검사 전부 |
+| `static_commands`, `static_config`, `static_off` | 정적 검사: 작업과 상관없이 언제나 통과해야 하는 검사(타입 검사, 린트). 형식은 `acceptance_commands`와 같고 자동 정적 검사에 더해진다. `static_config`는 그 설정 파일(검사 기준 파일이 됨). `"static_commands": []`는 자동 정적 검사를 끄고, 그때는 `static_off`에 이유가 필요 |
+| `no_visual_check` | web-prototype·godot-scene에서 화면 검사를 건너뛰는 이유(규칙 함수만 고침 등). 리뷰어에게 넘어감 |
 | `allow_out_of_scope` | 범위 밖이지만 바뀌어도 되는 파일 |
 | `baseline_green` | 처음부터 검사가 통과하는 게 맞는 이유(리팩터 등). 적으면 red-first를 건너뜀 |
 | `role` | 역할 덮어쓰기. `null`이면 역할 규칙을 넣지 않음 |
@@ -119,7 +122,7 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --task <task_id>`)을 �
 
 ### 작업 종류
 
-| kind | 만드는 쪽 | 자동 수용 검사 | 필수 입력 |
+| kind | 만드는 쪽 | 자동 수용 검사(정적 검사) | 필수 입력 |
 |---|---|---|---|
 | gdd, lore | Claude 구조 + Argon 문장 | 없음 | |
 | narrative | Argon 쓰고 Claude 검수 | `dialogue-to-dtl.mjs --check`(스키마·그래프 규칙·용어집 인물·Dialogic 변환) | `schema` |
@@ -128,10 +131,12 @@ verify가 통과하면 리뷰 명령(`consult.mjs review --task <task_id>`)을 �
 | art-image | asset-pipeline | PNG 매니페스트 | `assets_manifest`, `asset_pipeline` |
 | art-edit | asset-pipeline(Codex·Grok CLI provider) | PNG 매니페스트 | 위 + `reference_image`, `workflow_id` |
 | sfx | asset-pipeline | WAV 매니페스트 | `assets_manifest`, `asset_pipeline` |
-| web-prototype | Claude (Phaser 4) | 스크린샷(`screenshot` 있을 때) | |
-| code | Claude | `acceptance_commands`의 테스트 | |
-| godot-code | Claude (Godot 4.7) | `godot-check.mjs all`(+`schema` 있으면 데이터 검사) | |
-| godot-scene | Claude (Godot 4.7) | 위와 같음. 화면 흐름은 `acceptance_commands`의 `godot-playtest.mjs` | |
+| web-prototype | Claude (Phaser 4) | 스크린샷 (타입 검사, 구조 검사) | `screenshot` 또는 `no_visual_check` |
+| code | Claude | `acceptance_commands`의 테스트 (구조 검사) | |
+| godot-code | Claude (Godot 4.7) | `godot-check.mjs all`(+`schema` 있으면 데이터 검사) (구조 검사) | |
+| godot-scene | Claude (Godot 4.7) | 위와 같음. 화면 흐름은 `acceptance_commands`의 `godot-playtest.mjs` (구조 검사) | `godot-playtest.mjs`나 `godot-check.mjs shot` 수용 검사, 또는 `no_visual_check` |
+
+괄호 안의 정적 검사는 조건이 맞을 때만 생깁니다. 타입 검사(`npm --prefix prototype run typecheck`)는 `prototype/package.json`에 `typecheck` 스크립트가 있을 때, 구조 검사(`node tools/hfgs/check-structure.mjs design/structure.json`)는 `design/structure.json`이 있을 때입니다. 둘 다 템플릿을 깔면 생깁니다.
 
 ### 애셋(이미지·효과음)
 
@@ -177,8 +182,11 @@ GODOT_AI_PORT=8001 GODOT_AI_WS_PORT=9501 node tools/hfgs/godot-playtest.mjs test
 ## 검사를 믿을 수 있게 하는 규칙
 
 - **red-first.** `start`는 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 넘어갑니다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절합니다. 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하기 때문입니다. 새 파일을 만드는 작업은 파일이 없어 자연히 실패합니다. 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적으면 수정 전에는 실패하고 수정 후에 통과하는 검사가 됩니다. 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적습니다. 검사를 돌릴 수 없으면(exit 0·1이 아닌 끝: 인자·경로 오류, 시간 초과, 실행 파일 없음) 그 실패는 작업과 상관없으므로 `ACCEPTANCE_BROKEN`으로 거절합니다.
+- **정적 검사는 시작 전에 통과해야 합니다.** 타입 검사·구조 검사처럼 작업과 상관없이 언제나 통과해야 하는 검사는 수용 검사와 반대로 `start` 때 통과해야 합니다. exit 1이면 `STATIC_BASELINE_FAILING`, 0·1이 아니면 `STATIC_BROKEN`, 검사가 작업 트리를 바꾸면(`--fix` 같은 자동 수정) `STATIC_DIRTY`로 거절합니다. 원래 있던 위반을 눈감아 주는 기준선은 두지 않습니다. 먼저 고치는 작업을 따로 하거나 검사 대상을 통과하는 폴더로 좁힙니다. `check`·`verify`는 정적 검사를 먼저 돌리고, 실패해도 수용 검사까지 돌려 둘을 나눠 보여 줍니다. 정적 검사가 하나라도 실패하면 `verify`는 통과가 아니고 리뷰 명령도 내지 않습니다. 정적 검사는 수용 기준 판정(AC 표)에 들어가지 않고, 리뷰어에게는 검사 결과로 함께 넘어갑니다. 정적 검사가 red-first를 대신하지는 않습니다.
+- **구조 검사.** `design/structure.json`의 층(layer)마다 `files`(저장소 기준 글롭)의 파일을 읽어, `forbid_imports`(패키지 이름이나 경로 글롭. 상대 경로 import는 파일 위치에서 풀어 비교)와 `forbid_patterns`(줄 단위 정규식과 `why`. 주석 줄은 `in_comments: true`일 때만 봄)에 걸리는 줄을 `파일:줄: [층] 이유`로 출력합니다. 기본 설정은 프로토타입 규칙(`prototype/src/rules/`, 테스트 제외)의 `phaser`·장면·UI import, `Math.random`·`Date.now`·`new Date`, `@ts-ignore`·`@ts-expect-error`와 Godot 규칙(`scripts/rules/`)의 `Node`·`Control` 상속, `get_node`·`$노드`, `randf`·`randi`, `res://scenes/`를 막습니다. 규칙 함수가 순수해야 시뮬레이션과 테스트가 같은 입력에서 같은 답을 냅니다. 파일이 없는 층은 경고만 내고 통과합니다. 정규식 검사라 우회할 수 있으니 리뷰는 그대로 필요합니다. ESLint를 쓰고 싶으면 `static_commands`에 적습니다.
+- **화면 검사는 빠뜨릴 수 없습니다.** 화면을 바꾸는 작업(web-prototype은 `screenshot`, godot-scene은 `godot-playtest.mjs`나 `godot-check.mjs shot` 수용 검사)은 화면 검사가 없으면 `plan`이 `VISUAL_CHECK_REQUIRED`로 거절합니다. 규칙 함수만 고치는 작업은 `no_visual_check`에 이유를 적고, 그 이유는 리뷰어에게 넘어갑니다. `verify`가 통과하면 화면 검사가 출력한 스크린샷·프레임의 경로와 SHA-256을 작업 기록의 `verify.evidence`에 남기고 출력 끝에 보여 줍니다. 보이는 모양은 그 파일을 열어 사람이 확인합니다. 리뷰어에게 이미지는 넘기지 않습니다.
 - **검사 도구의 exit 코드.** `tools/`의 검사 도구는 0 통과, 1 결과가 틀림(작업이 만들 파일이 아직 없는 것 포함), 2 검사를 돌릴 수 없음(사용법, 스키마·용어집 같은 검사 기준 파일이 없음, Godot·에디터 연결 실패)으로 끝납니다. 직접 적는 수용 검사도 이 규칙을 따라야 red-first가 뜻을 가집니다.
-- **검사 기준은 범위 밖.** 스키마, 애셋 매니페스트, 대사 검사의 용어집, 참조 이미지는 `scope.paths`에 둘 수 없고(plan이 거절), `start` 때 해시를 기록해 `verify`에서 바뀌었으면 실패합니다. 기준을 느슨하게 고쳐 통과시키는 길을 막습니다.
+- **검사 기준은 범위 밖.** 스키마, 애셋 매니페스트, 대사 검사의 용어집, 참조 이미지, 정적 검사의 설정 파일(`design/structure.json`, `prototype/tsconfig.json`, `static_config`)은 `scope.paths`에 둘 수 없고(plan이 거절), `start` 때 해시를 기록해 `verify`에서 바뀌었으면 실패합니다. 기준을 느슨하게 고쳐 통과시키는 길을 막습니다.
 - **범위 검사.** `verify`는 작업 전과 비교해 바뀐 파일이 `scope.paths`(또는 `allow_out_of_scope`) 안에 있어야 통과합니다. 작업 전부터 바뀌어 있던 파일은 내용이 더 바뀌었을 때만 이 작업의 변경으로 봅니다.
 - **섹션 단위 읽기.** 설계 문서가 커질수록 통째로 읽는 비용이 빠르게 늘고, Read 한도(약 2.5만 토큰)를 넘으면 실패합니다(원본 템플릿 [#64](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/64), [#136](https://github.com/Donchitos/Claude-Code-Game-Studios/issues/136)). `context_sections`에 섹션을 적으면 plan이 줄 범위를 찾아 그 범위만 읽게 하고, 40KB가 넘는 문서는 섹션을 안 적어도 통째로 읽지 않게 합니다. 작가 brief에도 같은 지시가 들어갑니다.
 - **효과는 노드 상태로 검사합니다.** 소리를 틀었는지는 테스트용 카운터가 아니라 `AudioStreamPlayer.playing`으로, 그림은 `texture`와 보임으로 봅니다(godot-scene 규칙). 마일스톤 3에서 리뷰어가 카운터만 보는 테스트를 잡았습니다.

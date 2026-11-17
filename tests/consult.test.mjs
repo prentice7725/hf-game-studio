@@ -18,9 +18,24 @@ test('review --task: verify를 통과한 작업 기록에서 저장소·기준 �
  write(state);
  assert.throws(()=>reviewInputFromTask('T1',{env}),/verify를 통과하지 않은/);
  write({...state,verify:{ok:true,base:'bbb'}});
- assert.deepEqual(reviewInputFromTask('T1',{env}),{repo:'/r',base:'bbb',criteria:['AC1: x'],checks:[check,'npm test']});
+ assert.deepEqual(reviewInputFromTask('T1',{env}),{repo:'/r',base:'bbb',criteria:['AC1: x'],checks:[check,'npm test'],notes:[]});
  write({...state,verify:{ok:true}});
  assert.equal(reviewInputFromTask('T1',{env}).base,'aaa','base가 없던 예전 기록은 start 때의 HEAD');
+});
+
+test('review --task: 정적 검사도 리뷰어에게 넘기고, 화면 검사를 건너뛴 이유는 controller_notes로 준다',t=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-home-')),env={HFGS_HOME:home};
+ t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+ fs.mkdirSync(path.join(home,'tasks'));
+ const plan={success_criteria:['AC1: x'],static_commands:[['npm','--prefix','prototype','run','typecheck']],acceptance_commands:['npm test'],no_visual_check:'규칙 함수만 고침'};
+ fs.writeFileSync(path.join(home,'tasks','T2.json'),JSON.stringify({task_id:'T2',repo:'/r',head:'aaa',plan,verify:{ok:true}}));
+ const input=reviewInputFromTask('T2',{env});
+ assert.deepEqual(input.checks,[['npm','--prefix','prototype','run','typecheck'],'npm test']);
+ assert.equal(input.notes.length,1);
+ assert.match(input.notes[0],/No visual check.*규칙 함수만 고침/);
+ const prompt=JSON.parse(reviewPrompt({criteria:['AC1: x'],base:'aaa',diff:'',untracked:[],changed:[],checks:[],notes:input.notes,reviewer:'codex'}));
+ assert.deepEqual(prompt.controller_notes,input.notes);
+ assert.equal('controller_notes' in JSON.parse(reviewPrompt({criteria:['AC1: x'],base:'aaa',diff:'',untracked:[],changed:[],checks:[],reviewer:'codex'})),false);
 });
 
 function repo(){

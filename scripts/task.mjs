@@ -4,9 +4,9 @@
 // 검사 기준 파일(스키마·매니페스트·용어집·참조 이미지)은 작업 범위 밖에 두고 바뀌지 않았는지 확인하는 것.
 //
 //   plan   TASK.json   작업 파일을 검증하고 읽을 문서·규칙·수용 검사 명령을 보여 준다. 상태를 바꾸지 않는다.
-//   start  TASK.json   plan + red-first. 손대기 전 트리에서 수용 검사를 돌려 실패하는지 확인하고, 작업 전 상태를 기록한다.
-//   check  TASK.json   수용 검사만 돌린다(작업 도중 확인용).
-//   verify TASK.json   수용 검사 통과 + 범위 밖 변경 없음 + 검사 기준 파일 불변을 확인하고, 다른 계열 리뷰 명령을 알려 준다.
+//   start  TASK.json   plan + red-first. 정적 검사(타입·구조)가 손대기 전 트리에서 통과하는지, 수용 검사가 실패하는지 확인하고, 작업 전 상태를 기록한다.
+//   check  TASK.json   정적 검사와 수용 검사만 돌린다(작업 도중 확인용).
+//   verify TASK.json   정적·수용 검사 통과 + 범위 밖 변경 없음 + 검사 기준 파일 불변을 확인하고, 다른 계열 리뷰 명령을 알려 준다.
 //                      --base REV는 리뷰 기준 커밋(기본 start 때의 HEAD)을 바꾼다. 작업 도중 준비 변경을 따로 커밋했을 때 쓴다.
 //   hold   TASK.json   막힌 작업을 보류로 남긴다(--reason 필수). 다시 하려면 start --restart.
 // 사용법: node scripts/task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--restart] [--base REV] [--reason TEXT] [--json]
@@ -194,9 +194,58 @@ export function autoAcceptance(input,kind){
  return out;
 }
 
-// 검사 기준 파일. 작업 범위 밖에 있어야 하고 verify에서 바뀌지 않았어야 한다.
-export function criteriaFiles(input,kind){
- const files=[input.schema,input.assets_manifest,input.asset_pipeline?.reference_image];
+// 정적 검사: 작업과 상관없이 언제나 통과해야 하는 검사(타입 검사, 구조 검사). 수용 검사와 반대로 start 때 통과해야 한다.
+// 작업 종류의 static에 적힌 이름만 조건이 맞을 때 자동으로 만든다. config는 그 검사의 설정 파일로, 검사 기준 파일이 된다
+// (엄격도나 구조 규칙을 느슨하게 고쳐 통과시키는 길을 막는다).
+const readJson=file=>{try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return null;}};
+export const AUTO_STATIC={
+ typecheck:{when:repo=>typeof readJson(path.join(repo,'prototype','package.json'))?.scripts?.typecheck==='string',
+  command:['npm','--prefix','prototype','run','typecheck'],config:['prototype/tsconfig.json']},
+ structure:{when:repo=>fs.existsSync(path.join(repo,'design','structure.json')),
+  command:['node',`${TOOLS_DIR}/check-structure.mjs`,'design/structure.json'],config:['design/structure.json']}
+};
+
+// 작업 파일의 static_commands·static_config·static_off와 자동 정적 검사를 합친다.
+// static_commands가 없으면 자동 검사만, 있으면 적은 것 + 자동 검사, []이면 자동 검사를 끈다(static_off에 이유 필수).
+export function staticPlan(input,kind,{repo=process.cwd()}={}){
+ if(input.static_commands!==undefined&&!Array.isArray(input.static_commands))fail('static_commands는 배열');
+ let own;
+ try{own=(input.static_commands??[]).map(checkEntry);}catch(e){fail(`static_commands: ${e.message}`);}
+ const off=Array.isArray(input.static_commands)&&!input.static_commands.length;
+ if(off&&!str(input.static_off))fail('"static_commands": []로 자동 정적 검사를 끄려면 static_off에 이유를 적을 것(예: "템플릿을 아직 깔지 않은 저장소")');
+ if(input.static_off!==undefined&&!off)fail('static_off는 "static_commands": []와 함께만 쓴다');
+ if(input.static_config!==undefined&&(!Array.isArray(input.static_config)||!input.static_config.every(f=>str(f)&&!path.isAbsolute(f))))
+  fail('static_config는 저장소 기준 상대 경로 배열');
+ const auto=off?[]:(kind.static??[]).map(name=>{
+  const a=AUTO_STATIC[name];
+  if(!a)fail(`game-kinds.json의 알 수 없는 static: ${name}`);
+  return a.when(repo)?a:null;
+ }).filter(Boolean);
+ const seen=new Set(),commands=[...own,...auto.map(a=>a.command)].filter(c=>{const d=displayCheck(c);return !seen.has(d)&&seen.add(d);});
+ if(commands.length>10)fail('static_commands는 10개까지');
+ const config=[...new Set([...(input.static_config??[]),...auto.flatMap(a=>a.config.filter(f=>fs.existsSync(path.join(repo,f))))])];
+ return {commands,config,...(off?{off:input.static_off.trim()}:{})};
+}
+
+// 화면 검사 명령인지. 화면 증거(스크린샷 경로)도 이 검사들의 출력에서 모은다.
+export const isVisualCheck=c=>/screenshot\.mjs|godot-playtest\.mjs|godot-check\.mjs\S*\s+shot\b/.test(displayCheck(c));
+
+// 화면을 바꾸는 작업은 화면 검사 없이 시작하지 못한다. 화면이 바뀌지 않으면(규칙 함수만 고침) no_visual_check에 이유를 적는다.
+function visualRule(input,kind,commands){
+ if(input.no_visual_check!==undefined){
+  if(!kind.visual_check)fail(`no_visual_check는 화면 검사가 필요한 작업(web-prototype·godot-scene)에만 쓴다: ${input.kind}`);
+  if(!str(input.no_visual_check))fail('no_visual_check에는 화면을 띄우지 않아도 되는 이유를 적을 것');
+ }
+ if(!kind.visual_check||input.no_visual_check!==undefined)return;
+ const has=kind.visual_check==='screenshot'?input.screenshot!==undefined:commands.some(isVisualCheck);
+ if(!has)fail(kind.visual_check==='screenshot'
+  ?'VISUAL_CHECK_REQUIRED: web-prototype 작업은 screenshot(작업이 새로 그리는 글자를 expect_text로)이 필요함. 화면이 바뀌지 않는 작업이면 no_visual_check에 이유를 적을 것'
+  :`VISUAL_CHECK_REQUIRED: ${input.kind} 작업은 acceptance_commands에 화면 검사(node ${TOOLS_DIR}/godot-playtest.mjs ... 또는 node ${TOOLS_DIR}/godot-check.mjs shot)가 필요함. 화면이 바뀌지 않는 작업이면 no_visual_check에 이유를 적을 것`);
+}
+
+// 검사 기준 파일. 작업 범위 밖에 있어야 하고 verify에서 바뀌지 않았어야 한다. extra는 정적 검사의 설정 파일.
+export function criteriaFiles(input,kind,extra=[]){
+ const files=[input.schema,input.assets_manifest,input.asset_pipeline?.reference_image,...extra];
  if(kind.verify==='dialogue')files.push(input.glossary??'design/glossary.md');
  return [...new Set(files.filter(Boolean))];
 }
@@ -230,7 +279,8 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
    warn('PIXEL_STATIC 후보는 규격 OK·Pixel Gate PASS여도 엉터리 그림일 수 있음: 사용자에게 후보와 생성 원본(-raw)을 함께 보여 줄 것. 생성은 워크플로 기본 크기라 후보가 매니페스트보다 크면 리드가 최근접 축소만 해서 pick --from으로 넘긴다');
  }else if(kind.pipeline?.required)fail(`${input.kind} 작업은 asset_pipeline이 필요함: Claude는 ${kind.pipeline.output_classes.includes('SFX')?'소리를 합성':'그림을 그릴'} 수 없어 asset-pipeline MCP로만 만든다`);
  // 검사 기준 파일을 작업 범위에 넣으면 기준을 느슨하게 고쳐 통과시킬 수 있다. 새 인물·새 규격은 사용자와 상의해 따로 고친다.
- const criteria=criteriaFiles(input,kind);
+ const st=staticPlan(input,kind,{repo});
+ const criteria=criteriaFiles(input,kind,st.config);
  const inScope=criteria.filter(f=>input.scope.paths.includes(f));
  if(inScope.length)fail(`검사 기준 파일(${inScope.join(', ')})이 scope.paths에 있음: 기준은 범위 밖에 두고 바꾸지 않은 채 작업할 것`);
 
@@ -264,6 +314,10 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  const seen=new Set(),commands=[...own,...auto].filter(c=>{const d=displayCheck(c);return !seen.has(d)&&seen.add(d);});
  if(commands.length>10)fail('acceptance_commands는 10개까지');
  if(!commands.length)warn('수용 명령이 없음: verify가 기계적으로 확인할 것이 없다. 가능하면 schema·assets_manifest·screenshot이나 테스트 명령을 적을 것');
+ // 정적 검사는 시작 전에 통과해야 하고 수용 검사는 실패해야 하므로, 같은 검사가 양쪽에 있으면 start를 통과할 수 없다.
+ const staticNames=new Set(st.commands.map(displayCheck)),both=commands.map(displayCheck).filter(c=>staticNames.has(c));
+ if(both.length)fail(`같은 검사가 정적 검사와 수용 검사에 모두 있음: ${both.join(' ; ')} (언제나 통과해야 하면 static_commands에만, 작업이 바꾸는 것을 확인하면 acceptance_commands에만)`);
+ visualRule(input,kind,commands);
 
  // acceptance_map은 검사를 표시 문자열로 가리킨다(배열로 적은 검사는 배열 그대로 적어도 된다). "@auto"는 자동으로 만든 수용 명령 전부다.
  let map;
@@ -290,7 +344,8 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  }
  return {task_id:input.task_id,kind:input.kind,owner:kind.owner??'claude',...(writer?{writer}:{}),objective:input.objective,
   scope:input.scope.paths,allow_out_of_scope:input.allow_out_of_scope??[],success_criteria:input.success_criteria,criteria_files:criteria,
-  reading,rules,acceptance_commands:commands,...(map?{acceptance_map:map}:{}),...(write?{write_brief:write}:{})};
+  reading,rules,static_commands:st.commands,...(st.off?{static_off:st.off}:{}),acceptance_commands:commands,...(map?{acceptance_map:map}:{}),
+  ...(str(input.no_visual_check)?{no_visual_check:input.no_visual_check.trim()}:{}),...(write?{write_brief:write}:{})};
 }
 
 // ── 작업 전후 비교 ──
@@ -348,6 +403,20 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  const foreign=dirty.filter(f=>!inScope(f,[...p.scope,...p.allow_out_of_scope]));
  if(foreign.length)warn(`범위 밖의 커밋 안 된 변경 ${foreign.length}개가 있음: 리뷰 diff에 섞이니 이 작업과 무관하면 먼저 커밋할 것 (${list(foreign)})`);
  else if(dirty.length)warn(`작업 전에 바뀐 파일 ${dirty.length}개가 있음(내용을 기록해 두고 verify에서 더 바뀌었는지만 봄): ${list(dirty)}`);
+ const dirtyBefore=hashFiles(repo,dirty);
+ // 정적 검사는 수용 검사보다 먼저, 손대기 전 트리에서 모두 통과해야 한다. 원래 있던 위반을 눈감아 주는 기준선은 두지 않는다.
+ const staticBase=checks(repo,p.static_commands);
+ const tail=r=>r.output_tail.split('\n').slice(-5).join('\n    ');
+ const staticBad=staticBase.filter(broken);
+ if(staticBad.length)fail(`STATIC_BROKEN: 정적 검사를 돌릴 수 없음(exit 0·1이 아님). 인자·경로·도구를 고칠 것\n${staticBad.map(r=>`  [exit ${r.exit_code}] ${r.command}\n    ${tail(r)}`).join('\n')}`);
+ const staticRed=staticBase.filter(r=>!passed(r));
+ if(staticRed.length)fail(`STATIC_BASELINE_FAILING: 정적 검사가 손대기 전에 실패함. 원래 있던 위반을 먼저 고치는 작업을 따로 하거나, 검사 대상을 통과하는 폴더로 좁힐 것\n${staticRed.map(r=>`  ${r.command}\n    ${tail(r)}`).join('\n')}`);
+ // --fix 같은 자동 수정 명령은 검사가 아니다. 돌리기 전후의 작업 트리가 달라졌으면 거절한다.
+ if(p.static_commands.length){
+  const after=dirtyPaths(repo,{git}),afterHash=hashFiles(repo,after);
+  const touched=[...new Set([...after,...dirty])].filter(f=>(dirtyBefore[f]??undefined)!==(afterHash[f]??undefined));
+  if(touched.length)fail(`STATIC_DIRTY: 정적 검사가 파일을 바꿈(${list(touched)}). 자동 수정(--fix 등)이 아니라 확인만 하는 명령을 적을 것`);
+ }
  const baseline=checks(repo,p.acceptance_commands);
  // 돌릴 수 없는 검사(exit 2 등)는 작업 결과와 상관없이 실패하므로 red가 아니다. 작업 전에 고칠 것.
  const bad=baseline.filter(broken);
@@ -361,7 +430,7 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  if(red.length&&green.length)warn(`처음부터 통과하는 검사 ${green.length}개는 작업 결과를 가르지 못함: ${green.join(' ; ')}`);
  const state={task_id:p.task_id,kind:p.kind,repo:path.resolve(repo),started_at:new Date().toISOString(),head:head(repo,git),
   baseline:{red,green,results:baseline,...(str(input.baseline_green)?{green_reason:input.baseline_green}:{})},
-  dirty_before:hashFiles(repo,dirty),criteria_before:hashFiles(repo,p.criteria_files),plan:p};
+  static_baseline:staticBase,dirty_before:hashFiles(repo,dirty),criteria_before:hashFiles(repo,p.criteria_files),plan:p};
  return {plan:p,state,file:writeState(state,env)};
 }
 
@@ -378,8 +447,22 @@ export function hold(input,{reason,env=process.env}={}){
 
 export function check(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},checks=runChecks}={}){
  const p=plan(input,{repo,root,warn,baselineWarning:false});
- const results=checks(repo,p.acceptance_commands);
- return {plan:p,results,ok:results.every(passed)};
+ // 정적 검사가 실패해도 수용 검사는 돌려 결과를 함께 보여 준다.
+ const static_results=checks(repo,p.static_commands),results=checks(repo,p.acceptance_commands);
+ return {plan:p,static_results,results,ok:static_results.every(passed)&&results.every(passed)};
+}
+
+// 화면 증거: 통과한 화면 검사가 출력한 스크린샷·프레임 경로와 SHA-256. 스크린샷은 저장소 밖(또는 검사 도구가 정한 곳)에 그대로 둔다.
+export function visualEvidence(results,{repo=process.cwd()}={}){
+ const out=[];
+ for(const r of results.filter(r=>passed(r)&&isVisualCheck(r.command))){
+  for(const m of r.output_tail.matchAll(/^(?:스크린샷|화면|프레임): (.+\.png)\s*$/gm)){
+   const file=path.resolve(repo,m[1].trim());
+   if(!fs.existsSync(file))continue;
+   out.push({command:r.command,file:slashPath(file),sha256:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')});
+  }
+ }
+ return out;
 }
 
 // 수용 기준별 판정. 명령이 걸린 기준은 그 명령이 모두 통과해야 pass, 걸리지 않은 기준은 리드와 리뷰어가 직접 본다(manual).
@@ -410,7 +493,8 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
   try{git(repo,['merge-base','--is-ancestor',state.head,base]);}
   catch{fail(`--base ${base}가 시작 커밋(${state.head.slice(0,7)})에서 이어진 커밋이 아님`);}
  }
- const results=checks(repo,p.acceptance_commands);
+ const static_results=checks(repo,p.static_commands),results=checks(repo,p.acceptance_commands);
+ const static_failed=static_results.filter(r=>!passed(r)).map(r=>r.command);
  const failed=results.filter(r=>!passed(r)).map(r=>r.command);
  const errors=[];
  // 검사 기준 파일이 바뀌었으면 검사 통과는 의미가 없다.
@@ -424,14 +508,15 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
  const outOfScope=changed.filter(f=>!inScope(f,allowed));
  if(outOfScope.length)errors.push(`범위 밖 변경: ${outOfScope.join(', ')} (scope.paths에 넣을 것이면 작업 파일을 고치고, 아니면 되돌릴 것)`);
  const ac=acTable(p,results);
- const ok=!failed.length&&!errors.length;
+ const ok=!static_failed.length&&!failed.length&&!errors.length;
+ const evidence=ok?visualEvidence(results,{repo}):[];
  const review=reviewCommand(p.task_id);
  // 리뷰는 이 plan(지금 작업 파일 기준)과 base를 읽는다. start 뒤에 작업 파일의 기준·검사를 고쳤어도 리뷰가 verify와 같은 것을 본다.
  // base는 기본으로 start 때의 HEAD다. 작업 도중 준비 변경(도구 갱신 등)을 따로 커밋했으면 verify --base로 그 커밋을 준다.
  state.plan=p;
- state.verify={at:new Date().toISOString(),ok,failed,errors,changed,ac,base:base??state.head,review_command:review};
+ state.verify={at:new Date().toISOString(),ok,static_failed,failed,errors,changed,ac,evidence,base:base??state.head,review_command:review};
  writeState(state,env);
- return {plan:p,results,ac,failed,errors,changed,ok,review_command:review};
+ return {plan:p,static_results,results,ac,static_failed,failed,errors,changed,evidence,ok,review_command:review};
 }
 
 // ── CLI ──
@@ -443,10 +528,17 @@ function printPlan(p){
  if(p.reading.length){console.log('읽기:');for(const r of p.reading)console.log('  - '+r);}
  if(p.rules.length){console.log('규칙:');for(const r of p.rules)console.log('  - '+r);}
  console.log('수용 기준:');for(const c of p.success_criteria)console.log('  - '+c);
+ if(p.static_commands.length){console.log('정적 검사(언제나 통과해야 함):');for(const c of p.static_commands)console.log('  $ '+displayCheck(c));}
+ else if(p.static_off)console.log(`정적 검사: 끔(${p.static_off})`);
  console.log(p.acceptance_commands.length?'수용 검사:':'수용 검사: (없음)');for(const c of p.acceptance_commands)console.log('  $ '+displayCheck(c));
+ if(p.no_visual_check)console.log(`화면 검사 없음: ${p.no_visual_check}`);
  if(p.write_brief)console.log(`작가 brief(consult.mjs write에 넘길 것):\n${JSON.stringify(p.write_brief,null,2)}`);
 }
-function printResults(results){
+function printResults(results,title){
+ if(title){
+  if(!results.length&&title==='정적 검사')return;
+  console.log(`${title} ${results.filter(passed).length}/${results.length} 통과:`);
+ }
  for(const r of results)console.log(`  ${passed(r)?'OK  ':broken(r)?`ERR(${r.exit_code})`:'FAIL'} ${r.command}${passed(r)?'':`\n       ${r.output_tail.split('\n').slice(-3).join('\n       ')}`}`);
 }
 
@@ -482,8 +574,8 @@ function main(){
   return 0;
  }
  if(cmd==='check'){
-  const {results,ok}=check(input,{repo,warn});
-  console.log('수용 검사:');printResults(results);
+  const {static_results,results,ok}=check(input,{repo,warn});
+  printResults(static_results,'정적 검사');printResults(results,'수용 검사');
   return ok?0:1;
  }
  if(cmd==='hold'){
@@ -493,14 +585,16 @@ function main(){
  }
  const r=verify(input,{repo,warn,base:a.base});
  if(a.json){console.log(JSON.stringify(r,null,2));return r.ok?0:1;}
- console.log('수용 검사:');printResults(r.results);
+ printResults(r.static_results,'정적 검사');printResults(r.results,'수용 검사');
  console.log('수용 기준:');for(const x of r.ac)console.log(`  ${x.status==='pass'?'PASS  ':x.status==='fail'?'FAIL  ':'직접 확인'} ${x.criterion}`);
  console.log(`변경 파일: ${r.changed.length?r.changed.join(', '):'(없음)'}`);
  for(const e of r.errors)console.log('FAIL '+e);
  if(r.ok){
   console.log('\nverify 통과. 다음은 다른 계열 리뷰(직접 확인 항목은 리뷰어에게도 보인다):');
   console.log('  $ '+r.review_command);
- }else console.log('\nverify 실패. 위 항목을 고친 뒤 다시 verify.');
+  // 보이는 모양은 사람이 확인한다. 그 파일을 바로 열 수 있게 경로를 보여 준다(리뷰어에게 이미지는 넘기지 않는다).
+  if(r.evidence.length){console.log('화면 증거(보이는 모양은 사람이 확인):');for(const e of r.evidence)console.log(`  ${e.file}`);}
+ }else console.log(`\nverify 실패${r.static_failed.length?`(정적 검사 ${r.static_failed.length}개 실패)`:''}. 위 항목을 고친 뒤 다시 verify.`);
  return r.ok?0:1;
 }
 
