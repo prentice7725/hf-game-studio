@@ -108,7 +108,7 @@ export function convert(files,{schema,glossary,outDir,check=false,compare=false,
  return results;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  const args=process.argv.slice(2),files=[];
  let schema='design/schemas/dialogue.schema.json',glossary='design/glossary.md',outDir,check=false,compare=false;
  for(let i=0;i<args.length;i++){

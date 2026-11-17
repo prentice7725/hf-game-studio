@@ -87,6 +87,31 @@ const visibleText=e=>e.visible!==false&&typeof e.text==='string'&&e.text.trim();
 const isButton=e=>/Button/.test(e.type??'');
 const center=e=>({x:e.global_rect.position.x+e.global_rect.size.x/2,y:e.global_rect.position.y+e.global_rect.size.y/2});
 
+// get_ui_elements의 global_rect는 캔버스 좌표(기준 해상도, 예: 1920×1080)인데 input_mouse는 창 좌표(예: 1600×900)로 받는다
+// (Input.parse_input_event가 창의 stretch 변환을 거친다). 루트 창의 size·content_scale_*로 Godot의 stretch 규칙을 따라 바꾼다.
+// win은 get_node_info('/root/.')의 properties. 값이 없으면(정보를 못 읽음) 좌표를 그대로 쓴다. content_scale_stretch=integer는 다루지 않는다.
+export function canvasToWindow(win){
+ const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
+ const vx=n(win?.size?.x),vy=n(win?.size?.y),dx=n(win?.content_scale_size?.x),dy=n(win?.content_scale_size?.y);
+ const mode=n(win?.content_scale_mode)??0,aspect=n(win?.content_scale_aspect)??0,factor=n(win?.content_scale_factor)??1;
+ if(vx===null||vy===null)return p=>p;
+ if(mode===0||!dx||!dy)return p=>({x:p.x*factor,y:p.y*factor}); // stretch 꺼짐: 캔버스 = 창(배율만)
+ // Window::_update_viewport_size: viewport(캔버스) 크기, 그것이 차지하는 화면 크기(screen), 남는 여백(margin)
+ const da=dx/dy,va=vx/vy;
+ let view={x:dx,y:dy},screen={x:vx,y:vy},margin={x:0,y:0};
+ if(aspect!==0&&Math.abs(da-va)>1e-6){
+  if(va>da){ // 화면이 더 넓다
+   if(aspect===1||aspect===2){screen={x:vy*da,y:vy};margin.x=(vx-screen.x)/2;} // keep, keep_width: 좌우 여백
+   else view={x:dy*va,y:dy}; // keep_height, expand: 캔버스가 옆으로 늘어난다
+  }else{ // 화면이 더 높다
+   if(aspect===1||aspect===3){screen={x:vx,y:vx/da};margin.y=(vy-screen.y)/2;} // keep, keep_height: 위아래 여백
+   else view={x:dx,y:dx/va}; // keep_width, expand: 캔버스가 아래로 늘어난다
+  }
+ }
+ const sx=screen.x/(view.x/factor),sy=screen.y/(view.y/factor);
+ return p=>({x:margin.x+p.x*sx,y:margin.y+p.y*sy});
+}
+
 // 기대값 하나: 문자열은 같아야, {"match":"정규식"}은 맞아야 한다.
 export function matches(want,got){
  if(typeof want==='string')return got===want;
@@ -110,8 +135,13 @@ export function judgeExpect(expect,elements){
 // 시나리오 실행. call은 godot-ai 도구 호출(테스트에서는 가짜)이다.
 export async function runScenario(scenario,{call,log=console.log,sleep=sleepMs,shots,wait=500,maxSteps=60}={}){
  const ui=async()=>JSON.parse((await call('game_manage',{op:'get_ui_elements',params:{root_path:'..'}})).text).elements??[];
+ // 창 크기는 실행 중에 바뀔 수 있어(에디터에 끼워 넣은 게임 창 등) 누를 때마다 읽는다. 못 읽으면 캔버스 좌표 그대로.
+ const toWindow=async()=>{
+  try{return canvasToWindow(JSON.parse((await call('game_manage',{op:'get_node_info',params:{path:'/root/.',include_properties:true}})).text).properties);}
+  catch{return p=>p;}
+ };
  const click=async e=>{
-  const position=center(e);
+  const position=(await toWindow())(center(e));
   await call('game_manage',{op:'input_mouse',params:{event:'motion',position}});
   await call('game_manage',{op:'input_mouse',params:{event:'button',position,pressed:true}});
   await call('game_manage',{op:'input_mouse',params:{event:'button',position,pressed:false}});
@@ -188,7 +218,7 @@ export async function runScenario(scenario,{call,log=console.log,sleep=sleepMs,s
  return {ok:!problems.length,problems};
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href){
  const args=process.argv.slice(2);
  let file,port=process.env.GODOT_AI_PORT??'8000',wsPort=process.env.GODOT_AI_WS_PORT??'9500';
  let shots=path.join(process.env.HFGS_HOME??path.join(os.homedir(),'.hf-game-studio'),'playtest');

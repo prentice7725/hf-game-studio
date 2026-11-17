@@ -47,6 +47,8 @@ docs/design/               설계 문서. game-studio-v2.md 끝에 마일스톤�
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
 ```
 
+이미 받아 둔 저장소를 심볼릭 링크(Windows는 정션)로 `~/.claude/skills/hf-game-studio`에 걸어도 됩니다. 스크립트는 링크 경로로 불러도 실제 경로로 풀어 실행합니다.
+
 ```bash
 node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 ```
@@ -173,7 +175,7 @@ web-prototype 작업 파일은 `screenshot: {"serve": "npm --prefix prototype ru
 
 godot-code·godot-scene 작업은 `godot-check.mjs all`(문법+테스트+부팅)이 자동 수용 검사입니다(예: `examples/tasks/contract-rules-godot.json`). Dialogic 2는 아직 alpha(2.0-alpha-20)라 버전을 고정했습니다.
 
-화면 흐름은 `tools/hfgs/godot-playtest.mjs`로 자동 검사합니다. 에디터를 godot-ai와 함께 띄워 둔 채, 시나리오(`test/playtest/*.json`)대로 버튼을 누르고, 대사를 Enter로 넘기고, 선택지를 고르고, 라벨 글자(`expect`)와 컨트롤이 보이는지(`visible`)를 확인합니다. 이 명령을 `acceptance_commands`에 넣으면 "직접 확인"이던 화면 기준이 수용 검사가 됩니다. 포트는 기계마다 다르므로 `GODOT_AI_PORT`·`GODOT_AI_WS_PORT` 환경변수로 주고 `task.mjs`·`consult.mjs review`를 그 환경에서 돌립니다. 소리처럼 자동으로 못 보는 기준은 사람이 확인하고 `consult.mjs dispose <보고서> "AC5=confirmed:들어 봄"`으로 남깁니다.
+화면 흐름은 `tools/hfgs/godot-playtest.mjs`로 자동 검사합니다. 에디터를 godot-ai와 함께 띄워 둔 채, 시나리오(`test/playtest/*.json`)대로 버튼을 누르고, 대사를 Enter로 넘기고, 선택지를 고르고, 라벨 글자(`expect`)와 컨트롤이 보이는지(`visible`)를 확인합니다. 누를 곳은 컨트롤의 캔버스 좌표(기준 해상도)인데 godot-ai는 창 좌표로 입력을 넣으므로, 누를 때마다 루트 창의 `size`·`content_scale_*`(stretch 모드·비율)를 읽어 창 좌표로 바꿉니다. 정수 배율 stretch(`content_scale_stretch=integer`)는 다루지 않습니다. 이 명령을 `acceptance_commands`에 넣으면 "직접 확인"이던 화면 기준이 수용 검사가 됩니다. 포트는 기계마다 다르므로 `GODOT_AI_PORT`·`GODOT_AI_WS_PORT` 환경변수로 주고 `task.mjs`·`consult.mjs review`를 그 환경에서 돌립니다. 소리처럼 자동으로 못 보는 기준은 사람이 확인하고 `consult.mjs dispose <보고서> "AC5=confirmed:들어 봄"`으로 남깁니다.
 
 ```bash
 GODOT_AI_PORT=8001 GODOT_AI_WS_PORT=9501 node tools/hfgs/godot-playtest.mjs test/playtest/accept.json

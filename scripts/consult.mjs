@@ -323,5 +323,5 @@ async function main(){
  fail('사용법: consult.mjs review|write|dispose|stats ...');
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)
+if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href)
  main().then(code=>process.exit(code),e=>{console.error('오류: '+e.message);process.exit(2);});
