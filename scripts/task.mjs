@@ -569,7 +569,9 @@ function main(){
   const {plan:p,state,file:f}=start(input,{repo,warn,restart:a.restart});
   if(a.json){console.log(JSON.stringify({plan:p,state},null,2));return 0;}
   printPlan(p);
-  console.log(`\nred-first: 손대기 전 트리에서 ${state.baseline.red.length}개 실패, ${state.baseline.green.length}개 통과 (기록: ${f})`);
+  const sb=state.static_baseline??[];
+  if(sb.length)console.log(`\n정적 검사 기준선: ${sb.length}/${sb.length} 통과`);
+  console.log(`${sb.length?'':'\n'}red-first: 손대기 전 트리에서 ${state.baseline.red.length}개 실패, ${state.baseline.green.length}개 통과 (기록: ${f})`);
   console.log('다음: 담당이 claude면 직접 구현하고, argon이면 위 작가 brief로 consult.mjs write를 돌린 뒤 결과를 범위 안 파일로 쓸 것. 끝나면 task.mjs verify.');
   return 0;
  }

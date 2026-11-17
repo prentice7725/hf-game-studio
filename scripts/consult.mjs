@@ -143,7 +143,8 @@ export function reviewInputFromTask(taskId,{env=process.env}={}){
  // 정적 검사(타입·구조) 결과도 넘겨 리뷰어가 타입 오류를 다시 찾지 않게 한다. 예전 기록에는 static_commands가 없다.
  const notes=[
   ...(state.plan.no_visual_check?[`No visual check was run for this task (the author's stated reason: ${state.plan.no_visual_check}). Judge whether the change really leaves the screen unchanged.`]:[]),
-  ...(state.plan.static_off?[`Automatic static checks were turned off for this task (the author's stated reason: ${state.plan.static_off}).`]:[])
+  ...(state.plan.static_off?[`Automatic static checks were turned off for this task (the author's stated reason: ${state.plan.static_off}).`]:[]),
+  ...(state.verify.evidence?.length?[`Visual evidence saved by task.mjs verify (screenshots a human checks; open them if you can read images): ${state.verify.evidence.map(e=>e.file).join(', ')}`]:[])
  ];
  return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:[...(state.plan.static_commands??[]),...state.plan.acceptance_commands],notes};
 }
