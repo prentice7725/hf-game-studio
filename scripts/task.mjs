@@ -89,6 +89,27 @@ export function docDirectives(docs,picked,{repo,warn}){
  return out;
 }
 
+// 파일을 읽지 못하는 작가(모델 API 직접 호출)에게는 읽으라는 지시 대신 본문을 넣어 준다.
+// 고르는 규칙은 docDirectives와 같다: context_sections에 적은 문서는 그 섹션만, 작은 문서는 통째로.
+// 큰 문서는 작가가 제목을 훑어볼 수 없으므로 섹션을 적어야 한다. 비밀 파일은 밖으로 보내지 않는다.
+const SECRET_DOC=/(^|\/)(\.env(\..*)?$|secrets\/)/;
+export function docContents(docs,picked,{repo}){
+ return docs.map(d=>{
+  if(SECRET_DOC.test(d.replaceAll('\\','/')))fail(`비밀 파일은 작가에게 보내지 않음: ${d}`);
+  const text=fs.readFileSync(path.join(repo,d),'utf8'),want=picked[d];
+  if(want){
+   const all=sections(text),lines=text.split(/\r?\n/);
+   return {path:d,sections:want.map(name=>{
+    const hit=all.find(x=>x.title===name);
+    if(!hit)fail(`context_sections: ${d}에 "${name}" 섹션이 없음 (있는 제목: ${all.map(x=>x.title).join(', ')||'없음'})`);
+    return {title:name,content:lines.slice(hit.start-1,hit.end).join('\n')};
+   })};
+  }
+  if(Buffer.byteLength(text)>LARGE_DOC_BYTES)fail(`${d}는 ${Math.round(Buffer.byteLength(text)/1024)}KB라 통째로 보내지 않음: 이 작가는 파일을 읽지 못하므로 context_sections에 필요한 섹션을 적을 것`);
+  return {path:d,content:text};
+ });
+}
+
 // asset_pipeline: 이미지·효과음은 리드가 asset-pipeline MCP 서버(asset_build_brief → asset_route → asset_generate → asset_inspect_run)로 직접 만든다.
 // Claude는 그림을 그리거나 소리를 합성할 수 없으므로 다른 길은 없다. output_class는 asset-pipeline의 출력 종류이고,
 // 어떤 종류를 쓸 수 있는지는 kind의 pipeline.output_classes가 정한다.

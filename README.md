@@ -24,6 +24,8 @@ AI에게 게임을 맡기면 두 가지가 자주 무너집니다.
 
 필요한 것: Node.js 24 이상, Git, Claude Code. 다른 AI는 쓸 것만 깔면 됩니다(`codex`, `agy`, asset-pipeline).
 
+글쓰기는 `agy` 없이 Vertex AI를 직접 불러도 됩니다(`--writer vertex`). 서비스 계정 키 JSON을 `GOOGLE_APPLICATION_CREDENTIALS`로 가리키면 되고, 자세한 것은 `SKILL.md`의 "글쓰기를 Vertex AI로 직접"에 있습니다.
+
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
 ```

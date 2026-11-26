@@ -2,4 +2,5 @@
 import * as codex from './codex.mjs';
 import * as agy from './agy.mjs';
 import * as grok from './grok.mjs';
-export const ADAPTERS={codex,agy,grok};
+import * as vertex from './vertex.mjs';
+export const ADAPTERS={codex,agy,grok,vertex};

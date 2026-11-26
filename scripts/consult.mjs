@@ -12,7 +12,8 @@
 //        task.mjs verify를 통과한 작업 기록에서 저장소·기준 커밋·수용 기준·수용 검사를 읽는다(verify가 이 명령을 출력한다).
 //   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok] [--author-model M]
 //        [--criteria "AC1: ..."]... [--criteria-file F] [--check "<명령>"]... [--model M] [--effort E]
-//   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok] [--model M] [--effort E]
+//   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok|vertex] [--model M] [--effort E]
+//        vertex는 agy를 거치지 않고 Vertex AI를 직접 부른다(서비스 계정 키, --model 필수, 글쓰기 전용).
 //   node scripts/consult.mjs dispose <report.json> F1=act "F2=dismissed:이유" "AC5=confirmed:확인 내용" ...
 //   node scripts/consult.mjs stats
 // 보고서는 HFGS_HOME(기본 ~/.hf-game-studio)/reviews/에 남는다. 게임 저장소 안에 쓰지 않는다.
@@ -27,13 +28,13 @@ import {ADAPTERS} from './lib/adapters/index.mjs';
 import {runChecks} from './lib/checks.mjs';
 export {runChecks};
 import {invoke as invokeCli,readOnlyOrders} from './lib/cli.mjs';
-import {loadKinds,docDirectives,stateFile} from './task.mjs';
+import {loadKinds,docDirectives,docContents,stateFile} from './task.mjs';
 
 function fail(m){throw Object.assign(Error(m),{usage:true});}
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
 // 리뷰 독립성은 모델을 만든 회사(계열)로 판단한다. agy는 Claude 모델도 돌릴 수 있어 모델 이름으로 다시 본다.
-const FAMILY={claude:'anthropic',codex:'openai',agy:'google',grok:'xai'};
+const FAMILY={claude:'anthropic',codex:'openai',agy:'google',grok:'xai',vertex:'google'};
 export function familyOf(who,model){
  if(/^claude-/.test(model??''))return 'anthropic';
  if(/^gpt-|^o\d/.test(model??''))return 'openai';
@@ -152,6 +153,8 @@ export function reviewInputFromTask(taskId,{env=process.env}={}){
 export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],notes=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
  const adapter=ADAPTERS[reviewer];
  if(!adapter)fail(`알 수 없는 리뷰어: ${reviewer} (가능: ${Object.keys(ADAPTERS).join(', ')})`);
+ // 리뷰어는 바뀐 파일을 직접 읽어야 한다. 파일을 읽지 못하는 작가(vertex)는 글쓰기 전용이다.
+ if(adapter.reader==='inline')fail(`${reviewer}는 파일을 읽지 못해 리뷰를 맡길 수 없음(글쓰기 전용): codex, agy, grok 중에서 고를 것`);
  if(!criteria.length)fail('성공 기준이 필요함: --criteria "AC1: ..." 또는 --criteria-file');
  const noId=criteria.find(c=>!/^AC\d+:/.test(c));
  if(noId)fail(`성공 기준은 "AC1: ..."처럼 ID로 시작해야 함: ${noId}`);
@@ -204,7 +207,8 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
   if(!ok)warn(`문서 없음(건너뜀): ${d}`);
   return ok;
  });
- const reading=docs.length?docDirectives(docs,picked,{repo,warn}):[];
+ // 파일을 읽는 작가에게는 읽을 곳을, 읽지 못하는 작가에게는 본문을 준다.
+ const reading=!docs.length?[]:adapter.reader==='inline'?docContents(docs,picked,{repo}):docDirectives(docs,picked,{repo,warn});
  // 수용 기준을 작가에게도 보인다. 없으면 작가가 거절 분기 같은 필수 요소를 모르고 쓴다(마일스톤 1 실측).
  const prompt=JSON.stringify({task:'write',brief:{task:brief.task,...(brief.success_criteria?.length?{success_criteria:brief.success_criteria}:{}),kind:brief.kind??'prose',language:brief.language??'ko',format:brief.format??'markdown',
   ...(brief.length?{length:brief.length}:{}),...(brief.style?{style:brief.style}:{}),...(brief.structure?{structure:brief.structure}:{})},
@@ -212,7 +216,7 @@ export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,g
  const options={...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{}),timeout_ms:30*60*1000};
  const r=guarded(repo,()=>retrying(()=>invoke(adapter,{repo,prompt,schema:WRITE_SCHEMA,options,timeoutMs:options.timeout_ms}),{other:'다른 작가(--writer codex 등)'}),{git});
  if((brief.format??'markdown')==='json'){try{JSON.parse(r.result.content);}catch(e){fail(`작가가 낸 content가 JSON이 아님: ${e.message}`);}}
- const report={kind:'write',created_at:new Date().toISOString(),repo,adapter:writer,model:model??adapter.DEFAULT_MODEL??null,brief,...r.result,session_id:r.session_id??null,redacted:r.redacted};
+ const report={kind:'write',created_at:new Date().toISOString(),repo,adapter:writer,model:model??adapter.DEFAULT_MODEL??process.env[adapter.MODEL_ENV??'']??null,brief,...r.result,session_id:r.session_id??null,redacted:r.redacted};
  return {report,file:saveReport(report,dir),warnings:r.warnings??[]};
 }
 

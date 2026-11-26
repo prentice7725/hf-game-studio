@@ -81,6 +81,11 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 - **리뷰:** `node $HFGS/scripts/consult.mjs review --task <task_id>`. verify가 이 명령을 출력하고, 리뷰는 verify를 통과한 작업 기록(그때의 plan과 `--base`)을 읽는다. 작업 밖에서 리뷰할 때만 `--repo $REPO --base <커밋> --criteria "AC1: ..." --check "<검사 명령>"`을 직접 쓴다. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다. 용량 초과(`at capacity`)·과부하 같은 일시 오류는 한 번 다시 부르고, 또 실패하면 다른 계열로 바꾸라고 알린다(글쓰기도 같다).
 - **처분:** `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`(act, consider, noted, dismissed, contract_misread). 기각과 계약 오독에는 이유가 필요하다. `consult.mjs stats`가 리뷰어별로 쓸모 있는 지적 비율을 보여 준다.
 - **글쓰기:** `consult.mjs write <brief.json> --repo $REPO`. 기본 작가는 Gemini Argon(high). brief는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `structure`, `context_docs`, `context_sections`. `task.mjs plan`이 글 작업의 brief를 만들어 준다. agy는 한 번에 2분 정도 걸린다.
+- **글쓰기를 Vertex AI로 직접:** `consult.mjs write <brief.json> --repo $REPO --writer vertex --model <Vertex 모델 ID>`. agy를 거치지 않고 모델 API를 부른다. 구독 로그인이 아니라 서비스 계정 키로 인증하므로 요금은 Google Cloud 결제 계정(크레딧 포함)에서 나간다.
+  - 준비: `GOOGLE_APPLICATION_CREDENTIALS`에 서비스 계정 키 JSON 경로. 프로젝트는 `GOOGLE_CLOUD_PROJECT`(없으면 키 파일의 `project_id`), 리전은 `GOOGLE_CLOUD_LOCATION`(기본 `global`). 서비스 계정에 Vertex AI 사용자 역할이 있어야 한다.
+  - 모델은 기본값이 없다. `--model`이나 `HFGS_VERTEX_MODEL`로 정한다. Vertex의 모델 ID는 agy에서 쓰는 이름과 다를 수 있으니 Vertex 콘솔의 ID를 쓴다. `--effort`는 받지 않는다.
+  - 이 작가는 파일을 읽지 못한다. `context_docs`의 문서는 본문이 프롬프트에 들어가고, `context_sections`에 적은 문서는 그 섹션만 들어간다. 40KB를 넘는 문서는 섹션을 적어야 한다. `.env`와 `secrets/`는 보내지 않는다.
+  - 글쓰기 전용이다. 리뷰는 바뀐 파일을 직접 읽어야 하므로 `--reviewer vertex`는 거절한다.
 - **작업 트리 비교의 한계:** 추적 파일은 git status와 diff로만 비교한다. assume-unchanged나 clean 필터로 git이 숨기는 변경은 잡지 못한다. 실수를 잡는 장치이지 의도적 우회를 막는 장치가 아니다.
 - **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
 
