@@ -3,4 +3,5 @@ import * as codex from './codex.mjs';
 import * as agy from './agy.mjs';
 import * as grok from './grok.mjs';
 import * as vertex from './vertex.mjs';
-export const ADAPTERS={codex,agy,grok,vertex};
+import * as claude from './claude.mjs';
+export const ADAPTERS={codex,claude,agy,grok,vertex};

@@ -8,11 +8,13 @@
 //   stats   리뷰어별로 쓸모 있는 지적 비율을 본다.
 //
 // 사용법:
+//   공통: [--host claude|codex|agy|gemini] 리드 호스트(없으면 HFGS_HOST, Claude Code는 자동 감지).
+//        리뷰의 작성자 기본값과 리뷰어 기본값(작성자와 다른 계열), 글을 따로 맡길지가 여기서 정해진다.
 //   node scripts/consult.mjs review --task <task_id> [--reviewer ...] [--author ...] [--model M] [--effort E]
 //        task.mjs verify를 통과한 작업 기록에서 저장소·기준 커밋·수용 기준·수용 검사를 읽는다(verify가 이 명령을 출력한다).
-//   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|agy|grok] [--author claude|codex|agy|grok] [--author-model M]
+//   node scripts/consult.mjs review --base <ref> [--repo DIR] [--reviewer codex|claude|agy|grok] [--author claude|codex|agy|gemini|grok] [--author-model M]
 //        [--criteria "AC1: ..."]... [--criteria-file F] [--check "<명령>"]... [--model M] [--effort E]
-//   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|codex|grok|vertex] [--model M] [--effort E]
+//   node scripts/consult.mjs write <write-brief.json> [--repo DIR] [--writer agy|claude|codex|grok|vertex] [--model M] [--effort E]
 //        vertex는 agy를 거치지 않고 Vertex AI를 직접 부른다(서비스 계정 키, --model 필수, 글쓰기 전용).
 //   node scripts/consult.mjs dispose <report.json> F1=act "F2=dismissed:이유" "AC5=confirmed:확인 내용" ...
 //   node scripts/consult.mjs stats
@@ -29,19 +31,13 @@ import {runChecks} from './lib/checks.mjs';
 export {runChecks};
 import {invoke as invokeCli,readOnlyOrders} from './lib/cli.mjs';
 import {loadKinds,docDirectives,docContents,stateFile} from './task.mjs';
+import {familyOf,hostFamily,pickReviewer,resolveHost,hostWarning,HOST_MODEL_ENV,HOSTS} from './lib/host.mjs';
+export {familyOf};
 
 function fail(m){throw Object.assign(Error(m),{usage:true});}
 const str=v=>typeof v==='string'&&v.trim().length>0;
 
-// 리뷰 독립성은 모델을 만든 회사(계열)로 판단한다. agy는 Claude 모델도 돌릴 수 있어 모델 이름으로 다시 본다.
-const FAMILY={claude:'anthropic',codex:'openai',agy:'google',grok:'xai',vertex:'google'};
-export function familyOf(who,model){
- if(/^claude-/.test(model??''))return 'anthropic';
- if(/^gpt-|^o\d/.test(model??''))return 'openai';
- if(/^gemini-/.test(model??''))return 'google';
- if(/^grok-/.test(model??''))return 'xai';
- return FAMILY[who]??null;
-}
+// 리뷰 독립성은 모델을 만든 회사(계열)로 판단한다(lib/host.mjs의 familyOf).
 
 // 전문가가 저장소를 바꾸지 않았는지 전후로 비교한다. 각 CLI의 읽기 전용 모드는 보증이 아니다(agy --sandbox는 쓰기 도구를 못 막는다).
 // git diff는 추적되지 않은 파일의 내용을 담지 않으므로, 이미 있던 새 파일을 고쳐도 status·diff가 같다. 그 파일들은 내용까지 해시한다.
@@ -147,21 +143,31 @@ export function reviewInputFromTask(taskId,{env=process.env}={}){
   ...(state.plan.static_off?[`Automatic static checks were turned off for this task (the author's stated reason: ${state.plan.static_off}).`]:[]),
   ...(state.verify.evidence?.length?[`Visual evidence saved by task.mjs verify (screenshots a human checks; open them if you can read images): ${state.verify.evidence.map(e=>e.file).join(', ')}`]:[])
  ];
- return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:[...(state.plan.static_commands??[]),...state.plan.acceptance_commands],notes};
+ // 작성자는 그 작업을 시작한 리드다. 예전 기록에는 host가 없다.
+ return {repo:state.repo,base:state.verify.base??state.head,criteria:state.plan.success_criteria,checks:[...(state.plan.static_commands??[]),...state.plan.acceptance_commands],notes,...(state.host?{author:state.host}:{})};
 }
 
-export function review({repo,base,reviewer='codex',author='claude',authorModel,criteria=[],checks:commands=[],notes=[],model,effort},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir}={}){
+// 작성자 기본값은 리드 호스트, 리뷰어 기본값은 작성자와 계열이 다른 첫 전문가다(Claude 리드면 Codex, Codex 리드면 Claude).
+export function review({repo,base,reviewer,author,authorModel,criteria=[],checks:commands=[],notes=[],model,effort,host},{invoke=invokeCli,git=gitOut,spawn=spawnSync,dir,env=process.env}={}){
+ host??=resolveHost({env}).host;
+ author??=host;
+ if(author===host)authorModel??=env[HOST_MODEL_ENV];
+ if(!reviewer){
+  const family=familyOf(author,authorModel);
+  reviewer=pickReviewer(family,Object.keys(ADAPTERS).filter(n=>ADAPTERS[n].reader!=='inline'));
+  if(!reviewer)fail(`작성자(${author}${authorModel?' '+authorModel:''})와 계열이 다른 리뷰어를 고르지 못함: --reviewer로 정할 것`);
+ }
  const adapter=ADAPTERS[reviewer];
  if(!adapter)fail(`알 수 없는 리뷰어: ${reviewer} (가능: ${Object.keys(ADAPTERS).join(', ')})`);
  // 리뷰어는 바뀐 파일을 직접 읽어야 한다. 파일을 읽지 못하는 작가(vertex)는 글쓰기 전용이다.
- if(adapter.reader==='inline')fail(`${reviewer}는 파일을 읽지 못해 리뷰를 맡길 수 없음(글쓰기 전용): codex, agy, grok 중에서 고를 것`);
+ if(adapter.reader==='inline')fail(`${reviewer}는 파일을 읽지 못해 리뷰를 맡길 수 없음(글쓰기 전용): codex, claude, grok, agy 중에서 고를 것`);
  if(!criteria.length)fail('성공 기준이 필요함: --criteria "AC1: ..." 또는 --criteria-file');
  const noId=criteria.find(c=>!/^AC\d+:/.test(c));
  if(noId)fail(`성공 기준은 "AC1: ..."처럼 ID로 시작해야 함: ${noId}`);
  const options={...(model?{model}:{}),...(effort?{reasoning_effort:effort}:{})};
  const reviewerModel=model??adapter.DEFAULT_MODEL??null;
  // agy는 Gemini도 Claude도 돌릴 수 있어 CLI 이름만으로는 작성자 계열을 알 수 없다.
- if(author==='agy'&&!authorModel)fail('작성자가 agy면 --author-model로 작성한 모델을 적을 것(agy는 Gemini와 Claude를 모두 돌린다)');
+ if(author==='agy'&&!authorModel)fail(`작성자가 agy면 작성한 모델을 적을 것(agy는 Gemini와 Claude를 모두 돌린다): --author-model <모델>${author===host?`, 리드가 agy면 ${HOST_MODEL_ENV}=<모델>을 환경에 둬도 됨`:''}`);
  const authorFamily=familyOf(author,authorModel);
  if(!authorFamily)fail(`작성자 계열을 알 수 없음: ${author}${authorModel?' '+authorModel:''}`);
  if(authorFamily===familyOf(reviewer,reviewerModel))fail(`리뷰어(${reviewer}${reviewerModel?' '+reviewerModel:''})가 작성자(${author}${authorModel?' '+authorModel:''})와 같은 계열: 다른 계열을 고를 것`);
@@ -197,8 +203,14 @@ export function checkWriteBrief(b){
  if(b.context_sections!==undefined&&(typeof b.context_sections!=='object'||Array.isArray(b.context_sections)))fail('context_sections는 {"문서 경로": ["섹션 제목", ...]} 형식');
 }
 
-export function write(brief,{repo,writer='agy',model,effort},{invoke=invokeCli,git=gitOut,dir,root,warn=()=>{}}={}){
+// 작가 기본값은 Gemini Argon(agy)이다. 리드가 이미 Google 계열이면 같은 모델을 한 번 더 부를 이유가 없으므로 리드가 직접 쓴다.
+export function write(brief,{repo,writer,model,effort,host},{invoke=invokeCli,git=gitOut,dir,root,warn=()=>{},env=process.env}={}){
  checkWriteBrief(brief);
+ host??=resolveHost({env}).host;
+ if(!writer){
+  if(hostFamily(host,env)==='google')fail(`리드(${HOSTS[host].label})가 Google 계열이라 글은 리드가 직접 씀. 다른 모델의 글이 필요하면 --writer claude|codex|grok으로 정할 것`);
+  writer='agy';
+ }
  const adapter=ADAPTERS[writer];
  if(!adapter)fail(`알 수 없는 작가: ${writer} (가능: ${Object.keys(ADAPTERS).join(', ')})`);
  const picked=brief.context_sections??{};
@@ -291,6 +303,8 @@ function parseArgs(args){
 
 async function main(){
  const [cmd,...rest]=process.argv.slice(2),a=parseArgs(rest),repo=path.resolve(a.repo??process.cwd());
+ const resolved=resolveHost({flag:a.host}),host=resolved.host;
+ if(hostWarning(resolved)&&(cmd==='review'||cmd==='write'))console.error('경고: '+hostWarning(resolved));
  if(cmd==='review'){
   let input;
   if(a.task!==undefined){
@@ -301,13 +315,13 @@ async function main(){
    const criteria=[...a.criteria,...(a.criteria_file?fs.readFileSync(a.criteria_file,'utf8').split(/\r?\n/).filter(l=>/^AC\d+:/.test(l.trim())).map(l=>l.trim()):[])];
    input={repo,base:a.base,criteria,checks:a.check};
   }
-  const {report,file,warnings}=review({...input,reviewer:a.reviewer,author:a.author,authorModel:a.author_model,model:a.model,effort:a.effort});
+  const {report,file,warnings}=review({...input,reviewer:a.reviewer,author:a.author??input.author,authorModel:a.author_model,model:a.model,effort:a.effort,host});
   print(report,file,warnings);
   return report.verdict==='pass'?0:1;
  }
  if(cmd==='write'){
   if(!a._[0])fail('사용법: consult.mjs write <write-brief.json>');
-  const {report,file,warnings}=write(JSON.parse(fs.readFileSync(a._[0],'utf8')),{repo,writer:a.writer,model:a.model,effort:a.effort},{warn:m=>console.error('경고: '+m)});
+  const {report,file,warnings}=write(JSON.parse(fs.readFileSync(a._[0],'utf8')),{repo,writer:a.writer,model:a.model,effort:a.effort,host},{warn:m=>console.error('경고: '+m)});
   print(report,file,warnings);
   return 0;
  }

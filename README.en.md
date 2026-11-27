@@ -2,11 +2,11 @@
 
 [한국어](README.md) · [日本語](README.ja.md)
 
-**A skill for making games with Claude Code.** Claude does the design and the code itself and calls other AI models only for what they do best.
+**A skill for making games with an AI coding tool.** The model of the tool you are using (Claude Code, Codex, Antigravity or Gemini CLI) is the lead: it does the design and the code itself and calls other AI models only for what they do best.
 
 | Work | Done by |
 |---|---|
-| Design, code, numbers, checking | Claude |
+| Design, code, numbers, checking | The lead (your tool's model) |
 | Story, dialogue | Gemini (Argon) |
 | Images, sound effects | [asset-pipeline](https://github.com/prentice7725/asset-pipeline) (ComfyUI and others) |
 | Code review | A model from another vendor (Codex by default) |
@@ -22,7 +22,7 @@ When you hand a game to an AI, two things often go wrong.
 
 ## Install
 
-You need Node.js 24 or later, Git and Claude Code. Install the other models only if you use them (`codex`, `agy`, asset-pipeline).
+You need Node.js 24 or later, Git and one tool to act as the lead (Claude Code, Codex, Antigravity or Gemini CLI). Install the other models only if you use them (`codex`, `claude`, `agy`, asset-pipeline).
 
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
@@ -36,18 +36,30 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <game repo>
 
 This adds design document templates (`design/`), check tools (`tools/hfgs/`) and helper skills (`.claude/skills/gs-*`). Existing files are not overwritten.
 
+### With a tool other than Claude Code
+
+Clone the skill into that tool's skill folder and set `HFGS_HOST` so the scripts know who the lead is (Claude Code is detected automatically).
+
+| Lead | Clone into | Environment | Setup |
+|---|---|---|---|
+| Codex | `~/.codex/skills/hf-game-studio` | `HFGS_HOST=codex` | `setup.mjs <game repo> --host=codex` |
+| Antigravity | `~/.gemini/config/skills/hf-game-studio` | `HFGS_HOST=agy`, `HFGS_HOST_MODEL=<model ID>` | `setup.mjs <game repo> --host=agy` |
+| Gemini CLI | `~/.gemini/skills/hf-game-studio` | `HFGS_HOST=gemini` | `setup.mjs <game repo> --host=gemini` |
+
+The reviewer and the writer depend on the lead. With Codex as the lead, Claude reviews. With Antigravity or Gemini CLI as the lead, the lead writes the text itself. See "호스트" in `SKILL.md` (Korean). Only the Claude Code lead has been run in real sessions.
+
 - Add `--phaser` for a web prototype (Phaser 4)
 - Add `--godot` for the main game in Godot 4.7
 
 ## How to use
 
-Open Claude Code in the game repository and ask in plain words, for example:
+Open your lead tool (Claude Code or another) in the game repository and ask in plain words, for example:
 
 - "Make the first mercenary entry in the data"
 - "Prototype the contract board screen"
 - "Generate three portrait candidates for the hero"
 
-Claude follows these steps on its own:
+The lead follows these steps on its own:
 
 ```text
 define the task → confirm the checks fail first → build → confirm the checks pass → another model reviews → (images and sound) a person approves
@@ -80,7 +92,7 @@ simulation → web prototype → Godot game
 The detailed documents are in Korean.
 
 - [docs/reference.md](docs/reference.md): file layout, task file fields, task kinds, asset and Godot procedures, caveats
-- [SKILL.md](SKILL.md): the procedure Claude follows
+- [SKILL.md](SKILL.md): the procedure the lead follows
 - [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md), [game-studio-v3.md](docs/design/game-studio-v3.md): design background and field notes
 
 ## Tests

@@ -75,7 +75,7 @@ test('review: 작성자 주장 없이 diff·새 파일·검사 결과만 보내�
 
 test('review: 같은 계열 리뷰어, ID 없는 기준, 바뀐 것 없음은 거절',()=>{
  const dir=repo(),invoke=()=>({result:ok});
- assert.throws(()=>review({repo:dir,base:'HEAD',author:'codex',criteria:['AC1: x']},{invoke}),/같은 계열/);
+ assert.throws(()=>review({repo:dir,base:'HEAD',author:'codex',reviewer:'codex',criteria:['AC1: x']},{invoke}),/같은 계열/);
  assert.throws(()=>review({repo:dir,base:'HEAD',reviewer:'agy',model:'claude-opus-5-5',criteria:['AC1: x']},{invoke}),/같은 계열/);
  assert.throws(()=>review({repo:dir,base:'HEAD',criteria:['hp는 12']},{invoke}),/ID로 시작/);
  assert.throws(()=>review({repo:dir,base:'HEAD',criteria:[]},{invoke}),/성공 기준/);

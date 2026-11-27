@@ -39,7 +39,7 @@ const ASH='{"version":1,"mercenaries":[{"id":"ash","name":"애쉬","hire_cost":1
 
 test('모든 kind는 owner·verify·역할 파일이 올바르다',()=>{
  for(const [name,k] of Object.entries(loadKinds().kinds)){
-  assert.ok(['claude','asset-pipeline'].includes(k.owner),`${name}: owner`);
+  assert.ok(['lead','asset-pipeline'].includes(k.owner),`${name}: owner`);
   assert.ok(k.verify===undefined||VERIFIES.includes(k.verify),`${name}: verify ${k.verify}`);
   assert.ok(k.writer===undefined||k.writer==='argon',`${name}: writer`);
   if(k.role)assert.ok(roleDirectives(k.role).length>0,`${name}: 역할 지시문 없음`);
@@ -55,7 +55,7 @@ test('예시 작업 파일은 모두 plan을 통과한다',()=>{
 test('balance-data: 스키마 검사, @auto 매핑, 읽기 지시, 역할 규칙',()=>{
  const repo=repoWithDocs(),warnings=[];
  const p=plan(example('merc-data.json'),{repo,warn:m=>warnings.push(m)});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.equal(p.writer,undefined);
  assert.deepEqual(shown(p),['node tools/hfgs/validate-data.mjs design/schemas/mercenaries.schema.json data/mercenaries.json']);
  assert.deepEqual(p.acceptance_map,{AC1:shown(p)});
@@ -68,7 +68,7 @@ test('balance-data: 스키마 검사, @auto 매핑, 읽기 지시, 역할 규칙
 
 test('balance-data: 계약 데이터 작업은 contracts 스키마 검사 하나이고 화면 작업이 읽는 grain-cart를 만든다',()=>{
  const g=example('contract-data.json'),p=plan(g,{repo:repoWithDocs()});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.deepEqual(p.scope,['data/contracts.json']);
  assert.deepEqual(shown(p),['node tools/hfgs/validate-data.mjs design/schemas/contracts.schema.json data/contracts.json']);
  assert.deepEqual(p.criteria_files,['design/schemas/contracts.schema.json']);
@@ -84,7 +84,7 @@ test('balance-data: 계약 데이터 작업은 contracts 스키마 검사 하나
 
 test('web-prototype: 계약 게시판 작업은 템플릿이 이미 하는 일(목록·확률)이 아니라 GDD 계약 해결(받기 → 판정 → 장부 → 금화 표시)을 시킨다',()=>{
  const g=example('contract-board-ui.json'),p=plan(g,{repo:repoWithDocs()});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.ok(p.scope.includes('prototype/src/rules/guild.ts')&&p.scope.includes('prototype/src/rules/guild.test.ts'));
  assert.equal(g.screenshot.expect_text,'금화');
  assert.match(g.objective,/resolveContract/);assert.match(g.objective,/guild\.ts/);
@@ -98,7 +98,7 @@ test('web-prototype: 계약 게시판 작업은 템플릿이 이미 하는 일(�
 
 test('narrative: Argon 작가 brief와 dialogue-to-dtl --check 하나',()=>{
  const p=plan(example('contract-intro-dialogue.json'),{repo:repoWithDocs()});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.equal(p.writer,'argon');
  assert.deepEqual(shown(p),['node tools/hfgs/dialogue-to-dtl.mjs data/dialogue/contract-grain-cart.json --schema design/schemas/dialogue.schema.json --check']);
  assert.deepEqual(p.acceptance_map,{AC1:shown(p),AC2:shown(p)});
@@ -204,7 +204,7 @@ test('art-edit: 참조 이미지와 workflow_id가 필수이고, 참조는 검�
 
 test('web-prototype: 서버는 검사 도구가 직접 띄우고, 공백·# 있는 인자는 따옴표로 감싸고, Vitest는 따로 돈다',()=>{
  const p=plan(example('contract-board-ui.json'),{repo:repoWithDocs()});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.deepEqual(shown(p),['npm --prefix prototype test','node tools/hfgs/screenshot.mjs --serve "npm --prefix prototype run dev" --url "http://localhost:5173?seed=hfgs" --selector "#hud" --expect-text "금화" --name M1-T7-contract-board']);
  assert.deepEqual(p.acceptance_map,{AC1:[shown(p)[1]],AC3:[shown(p)[0]]});
  const g=example('contract-board-ui.json');
@@ -382,7 +382,7 @@ test('acceptance_commands: 문자열이나 인자 배열, acceptance_map은 표�
 
 test('godot-code: godot-check all이 자동 검사, Godot 템플릿의 contract_rules.gd가 범위',()=>{
  const repo=repoWithDocs(),p=plan(example('contract-rules-godot.json'),{repo});
- assert.equal(p.owner,'claude');
+ assert.equal(p.owner,'lead');
  assert.deepEqual(shown(p),['node tools/hfgs/godot-check.mjs all']);
  assert.deepEqual(p.acceptance_map,{AC1:shown(p)});
  assert.ok(p.rules.some(r=>r.includes('identical to the web prototype')));
