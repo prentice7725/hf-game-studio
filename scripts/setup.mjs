@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 // 게임 저장소에 hf-game-studio를 깐다. 이미 있는 파일은 덮어쓰지 않는다(--force면 검사 도구와 스킬만 갱신).
-// 사용법: node scripts/setup.mjs <게임 저장소> [--force] [--phaser | --phaser=폴더] [--godot]
+// 사용법: node scripts/setup.mjs <게임 저장소> [--host=claude|codex|agy|gemini|all] [--force] [--phaser | --phaser=폴더] [--godot]
+//   --host=호스트             리드 스킬을 깔 호스트(없으면 HFGS_HOST, Claude Code는 자동 감지). all이면 모든 호스트 폴더에 깐다
 //   --phaser[=폴더]           웹 프로토타입 템플릿(templates/phaser)을 <저장소>/<폴더>(기본 prototype)에 깐다. 있는 파일은 건너뛴다
 //   --godot                   Godot 4.7 템플릿(templates/godot)을 저장소 루트에 깐다. 있는 파일은 건너뛴다
 //   tools/hfgs/*.mjs          수용 검사 도구(데이터 스키마, 애셋 규격, 대사 변환·검사, 스크린샷)
 //   design/*.md               단일 원본 문서 뼈대(용어집, 세계관, GDD, 아트 바이블)
 //   design/schemas/*.json     결과물 형식(JSON 스키마) 예시
 //   design/asset-manifest.json 애셋 규격 예시
-//   .claude/skills/gs-*       리드용 검토 스킬
+//   <호스트 스킬 폴더>/gs-*    리드용 검토 스킬(.claude/skills, .codex/skills, .agents/skills, .gemini/skills)
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {STUDIO_ROOT,TOOLS_DIR} from './task.mjs';
+import {HOSTS,normalizeHost,resolveHost,hostWarning} from './lib/host.mjs';
+
+// 'all'이면 모든 호스트, 아니면 그 호스트 하나.
+export const hostList=host=>host==='all'?Object.keys(HOSTS):[normalizeHost(host)];
 
 // [원본(hf-game-studio 기준), 대상(게임 저장소 기준), 갱신 대상인지]
-export function plan(root=STUDIO_ROOT){
+export function plan(root=STUDIO_ROOT,{host='claude'}={}){
  const files=[];
  const dir=(src,dst,update)=>{
   for(const e of fs.readdirSync(path.join(root,src),{withFileTypes:true})){
@@ -24,14 +29,14 @@ export function plan(root=STUDIO_ROOT){
  };
  dir('tools',TOOLS_DIR,true);
  dir('templates/design','design',false);
- dir('skills','.claude/skills',true);
+ for(const h of hostList(host))dir('skills',HOSTS[h].skills,true);
  return files;
 }
 
-export function install(repo,{force=false,root=STUDIO_ROOT,log=console.log}={}){
+export function install(repo,{force=false,root=STUDIO_ROOT,log=console.log,host='claude'}={}){
  if(!fs.existsSync(path.join(repo,'.git')))throw Error(`Git 저장소가 아님: ${repo} (task.mjs가 작업 전후를 git으로 비교하므로 Git 저장소가 필요)`);
  const done=[];
- for(const [src,dst,update] of plan(root)){
+ for(const [src,dst,update] of plan(root,{host})){
   const target=path.join(repo,dst),exists=fs.existsSync(target);
   if(exists&&!(force&&update)){log(`건너뜀(이미 있음): ${dst}`);continue;}
   fs.mkdirSync(path.dirname(target),{recursive:true});
@@ -100,12 +105,20 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(fs.realpathSync(process.argv
  const phaserFlag=args.find(a=>a==='--phaser'||a.startsWith('--phaser='));
  const phaser=phaserFlag?(phaserFlag.includes('=')?phaserFlag.slice('--phaser='.length):PHASER_DIR):null;
  const godot=args.includes('--godot');
- const unknown=args.find(a=>a.startsWith('--')&&a!=='--force'&&a!=='--godot'&&a!==phaserFlag);
+ const hostFlag=args.find(a=>a.startsWith('--host='));
+ const unknown=args.find(a=>a.startsWith('--')&&a!=='--force'&&a!=='--godot'&&a!==phaserFlag&&a!==hostFlag);
  if(unknown){console.error(`알 수 없는 인자: ${unknown}`);process.exit(2);}
  const repo=args.find(a=>!a.startsWith('--'));
- if(!repo||(phaser!==null&&!phaser)){console.error('사용법: setup.mjs <게임 저장소> [--force] [--phaser | --phaser=폴더] [--godot]');process.exit(2);}
+ if(!repo||(phaser!==null&&!phaser)){console.error('사용법: setup.mjs <게임 저장소> [--host=claude|codex|agy|gemini|all] [--force] [--phaser | --phaser=폴더] [--godot]');process.exit(2);}
  try{
-  install(path.resolve(repo),{force});
+  let host=hostFlag?.slice('--host='.length);
+  if(host!=='all'){
+   const resolved=resolveHost({flag:host});
+   if(hostWarning(resolved))console.error('경고: '+hostWarning(resolved)+' (스킬은 .claude/skills에 깜)');
+   host=resolved.host;
+  }
+  console.log(`리드 스킬 위치: ${hostList(host).map(h=>`${HOSTS[h].skills} (${HOSTS[h].label})`).join(', ')}`);
+  install(path.resolve(repo),{force,host});
   if(phaser){
    installPhaser(path.resolve(repo),{dir:phaser});
    console.log(`\n프로토타입: cd ${phaser} && npm install. 스크린샷 검사에는 저장소 루트에서 npm i -D playwright && npx playwright install chromium`);

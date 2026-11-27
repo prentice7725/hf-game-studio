@@ -1,8 +1,8 @@
 {
-  "$comment": "게임 작업 종류. hf-game-studio가 직접 정의한다. owner는 결과물을 만드는 쪽(claude: 리드가 직접 구현, asset-pipeline: 리드가 MCP로 생성), writer는 글을 쓰는 전문가 모델(argon: Gemini Argon을 consult.mjs write로 부르고 리드가 검수). verify는 task.mjs가 자동으로 만드는 수용 검사, static은 조건이 맞을 때 자동으로 만드는 정적 검사(typecheck: prototype/package.json에 typecheck 스크립트가 있을 때, structure: design/structure.json이 있을 때), visual_check는 있어야 하는 화면 검사(screenshot: screenshot 필드, godot: godot-playtest.mjs나 godot-check.mjs shot 수용 검사. 화면이 바뀌지 않는 작업은 no_visual_check에 이유),require는 작업 파일에 있어야 하는 필드, rules는 리드(와 작가 모델)가 따르는 규칙이다.",
+  "$comment": "게임 작업 종류. hf-game-studio가 직접 정의한다. owner는 결과물을 만드는 쪽(lead: 리드가 직접 구현, asset-pipeline: 리드가 MCP로 생성), writer는 글을 쓰는 전문가 모델(argon: Gemini Argon을 consult.mjs write로 부르고 리드가 검수. 리드가 Google 계열이면 부르지 않고 리드가 직접 쓴다). verify는 task.mjs가 자동으로 만드는 수용 검사, static은 조건이 맞을 때 자동으로 만드는 정적 검사(typecheck: prototype/package.json에 typecheck 스크립트가 있을 때, structure: design/structure.json이 있을 때), visual_check는 있어야 하는 화면 검사(screenshot: screenshot 필드, godot: godot-playtest.mjs나 godot-check.mjs shot 수용 검사. 화면이 바뀌지 않는 작업은 no_visual_check에 이유),require는 작업 파일에 있어야 하는 필드, rules는 리드(와 작가 모델)가 따르는 규칙이다.",
   "kinds": {
     "gdd": {
-      "owner": "claude",
+      "owner": "lead",
       "writer": "argon",
       "role": "game-designer",
       "rules": [
@@ -11,7 +11,7 @@
       ]
     },
     "lore": {
-      "owner": "claude",
+      "owner": "lead",
       "writer": "argon",
       "role": "world-builder",
       "rules": [
@@ -20,7 +20,7 @@
     },
     "narrative": {
       "$comment": "대사 JSON은 스키마만으로 부족하다. dialogue-to-dtl.mjs --check가 스키마, 그래프 규칙, 용어집 인물 ID, Dialogic 변환 가능 여부를 한 번에 검사한다.",
-      "owner": "claude",
+      "owner": "lead",
       "writer": "argon",
       "role": "writer",
       "verify": "dialogue",
@@ -32,7 +32,7 @@
       ]
     },
     "balance-data": {
-      "owner": "claude",
+      "owner": "lead",
       "role": "systems-designer",
       "verify": "schema",
       "require": [
@@ -44,7 +44,7 @@
       ]
     },
     "economy-data": {
-      "owner": "claude",
+      "owner": "lead",
       "role": "economy-designer",
       "verify": "schema",
       "require": [
@@ -55,7 +55,7 @@
       ]
     },
     "level": {
-      "owner": "claude",
+      "owner": "lead",
       "role": "level-designer",
       "verify": "schema",
       "rules": []
@@ -121,7 +121,7 @@
     },
     "web-prototype": {
       "$comment": "버리는 웹 프로토타입(Phaser 4). 재미 확인용. 코드는 버리고 데이터·대사·설계 수정만 남긴다.",
-      "owner": "claude",
+      "owner": "lead",
       "role": "ui-programmer",
       "verify": "screenshot",
       "static": ["typecheck", "structure"],
@@ -133,7 +133,7 @@
     },
     "godot-code": {
       "$comment": "Godot 본편의 GDScript·C# 작업(규칙, 데이터 읽기, 시스템). 검사는 tools/hfgs/godot-check.mjs(문법 + gdUnit4 + 헤드리스 부팅)이고 GODOT_BIN이 필요하다.",
-      "owner": "claude",
+      "owner": "lead",
       "role": "gameplay-programmer",
       "verify": "godot",
       "static": ["structure"],
@@ -144,7 +144,7 @@
     },
     "godot-scene": {
       "$comment": "Godot 장면·UI 작업. 문법·테스트·부팅 검사는 같고, 화면은 godot-check.mjs shot의 프레임을 사람이 본다.",
-      "owner": "claude",
+      "owner": "lead",
       "role": "ui-programmer",
       "verify": "godot",
       "static": ["structure"],
@@ -157,7 +157,7 @@
     },
     "code": {
       "$comment": "그 밖의 코드 작업(규칙 로직, 테스트, 리팩터). 수용 검사는 acceptance_commands에 테스트 명령으로 적는다.",
-      "owner": "claude",
+      "owner": "lead",
       "role": "gameplay-programmer",
       "static": ["structure"],
       "rules": []

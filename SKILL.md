@@ -1,18 +1,18 @@
 ---
 name: hf-game-studio
-description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 주 구현자이고, Gemini Argon(시나리오·대사·로어), asset-pipeline MCP(이미지·효과음), 다른 계열 모델(코드 리뷰)을 읽기 전용 전문가로 부른다. 게임 기획·대사·애셋·밸런스·프로토타입 작업이나 hf-game-studio 요청에 쓴다.
+description: 멀티 모델 게임 개발 스튜디오. 이 스킬을 읽는 호스트 모델(Claude Code, Codex, Antigravity, Gemini CLI)이 리드이자 주 구현자이고, Gemini Argon(시나리오·대사·로어), asset-pipeline MCP(이미지·효과음), 다른 계열 모델(코드 리뷰)을 읽기 전용 전문가로 부른다. 게임 기획·대사·애셋·밸런스·프로토타입 작업이나 hf-game-studio 요청에 쓴다.
 ---
 # hf-game-studio
 
-**Claude가 리드이자 주 구현자다.** 설계, 코드, 통합, 검수를 맡는다. 전문가 모델은 잘하는 일만 읽기 전용으로 한다: 글은 Gemini Argon, 이미지·효과음은 asset-pipeline, 리뷰는 작성자와 다른 계열. 결정과 배경은 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있다.
+**이 스킬을 읽는 호스트 모델이 리드이자 주 구현자다.** 설계, 코드, 통합, 검수를 맡는다. 전문가 모델은 잘하는 일만 읽기 전용으로 한다: 글은 Gemini Argon, 이미지·효과음은 asset-pipeline, 리뷰는 작성자와 다른 계열. 리드가 어느 호스트인지에 따라 달라지는 것은 아래 "호스트"에 있다. 결정과 배경은 [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)에 있다.
 
 `HFGS`는 이 디렉터리, `REPO`는 게임 저장소다. 설계 문서는 통째로 읽지 않는다(아래 "문서 읽기").
 
 ## 처음 한 번
 
-1. `node $HFGS/scripts/setup.mjs $REPO`: 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(`.claude/skills/gs-*`)을 깐다. 있는 파일은 덮어쓰지 않는다. 웹 프로토타입 단계면 `--phaser`를 붙여 `prototype/`에 Phaser 4 템플릿을 깔고 그 안에서 `npm install`을 한다(스크린샷 검사용 Playwright는 저장소 루트에 `npm i -D playwright && npx playwright install chromium`). Godot 본편 단계면 `--godot`을 붙여 루트에 Godot 4.7 템플릿을 깔고, `node tools/hfgs/godot-addons.mjs .`로 애드온(gdUnit4, Dialogic 2, Aseprite Wizard, godot-ai)을 받고, `GODOT_BIN`을 Godot 4.7 실행 파일로 둔다. 이미 있는 `.gitignore`에는 템플릿의 없는 줄(`.godot/`, `shots/`, gdUnit4의 `reports/`)만 더한다. **준비 단계에서 바뀐 것(애드온 등)은 첫 작업을 시작하기 전에 커밋한다.** 리뷰는 시작 커밋과의 diff를 보므로 커밋하지 않으면 애드온 수천 파일이 리뷰 대상에 섞인다(start가 경고한다). Godot은 애드온을 깐 뒤 에디터를 한 번 열어 닫고, 에디터가 저장한 형태(`.uid` 파일, `main.tscn`의 uid 등)까지 이 준비 커밋에 넣는다. 그러지 않으면 에디터로 실행할 때마다 템플릿 장면이 다시 저장되어 범위 밖 변경이 생긴다.
+1. `node $HFGS/scripts/setup.mjs $REPO`: 검사 도구(`tools/hfgs/`), 설계 문서 뼈대(`design/`), 리드 검토 스킬(호스트의 스킬 폴더 `gs-*`. `--host=claude|codex|agy|gemini|all`로 정하고, 없으면 지금 호스트)을 깐다. 있는 파일은 덮어쓰지 않는다. 웹 프로토타입 단계면 `--phaser`를 붙여 `prototype/`에 Phaser 4 템플릿을 깔고 그 안에서 `npm install`을 한다(스크린샷 검사용 Playwright는 저장소 루트에 `npm i -D playwright && npx playwright install chromium`). Godot 본편 단계면 `--godot`을 붙여 루트에 Godot 4.7 템플릿을 깔고, `node tools/hfgs/godot-addons.mjs .`로 애드온(gdUnit4, Dialogic 2, Aseprite Wizard, godot-ai)을 받고, `GODOT_BIN`을 Godot 4.7 실행 파일로 둔다. 이미 있는 `.gitignore`에는 템플릿의 없는 줄(`.godot/`, `shots/`, gdUnit4의 `reports/`)만 더한다. **준비 단계에서 바뀐 것(애드온 등)은 첫 작업을 시작하기 전에 커밋한다.** 리뷰는 시작 커밋과의 diff를 보므로 커밋하지 않으면 애드온 수천 파일이 리뷰 대상에 섞인다(start가 경고한다). Godot은 애드온을 깐 뒤 에디터를 한 번 열어 닫고, 에디터가 저장한 형태(`.uid` 파일, `main.tscn`의 uid 등)까지 이 준비 커밋에 넣는다. 그러지 않으면 에디터로 실행할 때마다 템플릿 장면이 다시 저장되어 범위 밖 변경이 생긴다.
 2. 사용자와 `design/glossary.md`, `design/world.md`, `design/gdd.md`, `design/art-bible.md`를 채운다. 모든 모델이 읽는 단일 원본이다. 비어 있으면 모델마다 세계관과 수치를 지어낸다. 결과물 형식은 `design/schemas/*.schema.json`과 `design/asset-manifest.json`에 먼저 적는다. 이 파일들이 수용 검사의 기준이 된다.
-3. 전문가가 준비됐는지 본다: `codex`(리뷰)·`agy`(Argon 글쓰기)가 설치·로그인되어 있는지, asset-pipeline MCP가 Claude Code에 등록되어 있는지(`asset_capabilities`로 확인).
+3. 전문가가 준비됐는지 본다: 리뷰어(Claude 리드면 `codex`, Codex 리드면 `claude`)와 작가(`agy`, 리드가 Google 계열이면 필요 없음)가 설치·로그인되어 있는지, asset-pipeline MCP가 호스트에 등록되어 있는지(`asset_capabilities`로 확인).
 4. 마일스톤은 `$HFGS/examples/milestone-1.md`처럼 작게(용병 1명 + 계약 1개 + 대사 1개 + 화면 1개) 작업 목록으로 적고 사용자 승인을 받는다. 화면이 읽는 데이터 파일(예: `data/contracts.json`)마다 데이터 작업을 앞에 둔다. 게이트는 이것 하나다. 마일스톤마다 준비 변경(마일스톤 문서, `setup.mjs --force`로 갱신한 도구)이 생기면 **첫 작업을 start하기 전에 사용자에게 커밋을 묻는다.** 늦게 커밋했으면 `verify --base <준비 커밋>`으로 리뷰 기준을 옮긴다.
 
 ## 작업마다
@@ -20,8 +20,8 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 1. **작업 파일 작성.** `kind`를 고르고(아래 표) `task_id`, `objective`, `scope.paths`, `success_criteria`(AC1, AC2…), 종류별 검사 입력(`schema`, `assets_manifest`, `screenshot`, `asset_pipeline`), `acceptance_map`(`"@auto"`는 자동 검사 전부), 읽을 문서 섹션(`context_sections`)을 적는다. 타입 검사·린트처럼 작업과 상관없이 언제나 통과해야 하는 검사는 `acceptance_commands`가 아니라 `static_commands`에 적는다(아래 2). 화면을 바꾸는 작업(web-prototype, godot-scene)은 화면 검사가 있어야 한다: web-prototype은 `screenshot`, godot-scene은 `acceptance_commands`의 `godot-playtest.mjs`나 `godot-check.mjs shot`. 없으면 plan이 `VISUAL_CHECK_REQUIRED`로 거절한다. 화면이 바뀌지 않는 작업(규칙 함수만 고침)은 `no_visual_check`에 이유를 적는다. 이유는 리뷰어에게 넘어간다. 예시는 `$HFGS/examples/tasks/`. 작업 파일과 작업 중 메모는 게임 저장소 밖(예: `~/.hf-game-studio/` 아래)이나 `.gitignore`된 곳에 둔다(저장소 안 문서에 적으면 범위 밖 변경이 된다). 범위 안 파일 곁에 Godot이 만드는 `.uid`·`.import`는 따로 적지 않아도 범위로 본다. Godot 작업이 데이터도 고치면 `schema`와 `expect`를 적는다. 데이터 검사(`validate-data.mjs --expect`)가 자동으로 만들어진다. 글자 값의 `--expect`를 `acceptance_commands`에 손으로 쓰면 따옴표가 셸에서 벗겨진다.
 2. **시작.** `node $HFGS/scripts/task.mjs start TASK.json --repo $REPO`. 작업 파일을 검증하고, 읽을 문서·규칙·검사 명령을 보여 주고, 먼저 **정적 검사**를 돌린다: 손대기 전 트리에서 모두 통과해야 하고, exit 1이면 `STATIC_BASELINE_FAILING`, 0·1이 아니면 `STATIC_BROKEN`, 검사가 파일을 바꾸면(`--fix` 등) `STATIC_DIRTY`로 거절한다. 원래 있던 위반은 먼저 고치는 작업을 따로 하거나 검사 대상을 좁힌다. 정적 검사는 작업 종류에 따라 자동으로도 생긴다: `design/structure.json`이 있으면 web-prototype·code·godot-code·godot-scene에 구조 검사(`check-structure.mjs`), `prototype/package.json`에 `typecheck` 스크립트가 있으면 web-prototype에 타입 검사. 끄려면 `"static_commands": []`와 `static_off`에 이유. 정적 검사의 설정 파일(`design/structure.json`, `prototype/tsconfig.json`, 작업 파일의 `static_config`)은 검사 기준 파일이다. 그다음 **red-first**를 한다: 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 한다. 모두 통과하면 `ACCEPTANCE_ALREADY_GREEN`으로 거절한다(그 검사는 맞는 결과와 엉터리 결과를 가르지 못한다). 검사가 exit 0·1이 아니게 끝나면(2: 인자·경로 오류나 Godot·에디터를 못 찾음, 시간 초과, 실행 파일 없음) 실패로 치지 않고 `ACCEPTANCE_BROKEN`으로 거절한다. 검사를 고치거나 필요한 것(GODOT_BIN, 플레이테스트면 godot-ai와 함께 띄운 에디터)을 준비하고 다시 start한다. 이미 있는 데이터를 고치는 작업은 `expect`에 바뀔 값을 적고, 처음부터 통과하는 게 맞으면(리팩터) `baseline_green`에 이유를 적는다. 작업 전 트리 상태와 검사 기준 파일의 해시가 `~/.hf-game-studio/tasks/`에 기록된다.
 3. **구현.** 담당(`owner`)에 따라 다르다.
-   - `claude`: 리드가 직접 구현한다. plan의 읽기 지시대로 문서 섹션만 읽고, 규칙을 따른다.
-   - 글(`writer: argon`): plan이 보여 주는 작가 brief(수용 기준 `success_criteria` 포함)를 파일로 저장해 `node $HFGS/scripts/consult.mjs write BRIEF.json --repo $REPO`로 Argon에게 맡긴다. 작가는 기준을 지키라는 지시를 받고, 못 지키면 메모에 적는다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 리드가 용어집·세계관과 맞는지 검수한 뒤 범위 안 파일로 쓴다. 새 용어는 사용자에게 물어 용어집에 넣을지 정한다(용어집은 검사 기준이라 이 작업 범위에서 고치지 않는다). 글을 새로 쓰지 않는 글 작업(이미 있는 대사 JSON을 `.dtl`로 변환만 하는 등)은 작업 파일에 `"writer": "none"`을 적어 brief를 뺀다. 대사 작업에 `"dtl_dir": "dialogue"`를 적으면 그 폴더의 `.dtl`이 지금 JSON의 변환 결과와 같은지도 자동 검사한다.
+   - `lead`: 리드가 직접 구현한다. plan의 읽기 지시대로 문서 섹션만 읽고, 규칙을 따른다.
+   - 글(`writer: argon`): 리드가 Google 계열(Antigravity, Gemini CLI)이면 plan이 작가 brief를 만들지 않고 리드가 직접 쓴다. 그 밖의 리드는 plan이 보여 주는 작가 brief(수용 기준 `success_criteria` 포함)를 파일로 저장해 `node $HFGS/scripts/consult.mjs write BRIEF.json --repo $REPO`로 Argon에게 맡긴다. 작가는 기준을 지키라는 지시를 받고, 못 지키면 메모에 적는다. 결과 글은 표준 출력으로, 새 용어(`new_terms`)와 작가 메모는 표준 오류로 나온다. 리드가 용어집·세계관과 맞는지 검수한 뒤 범위 안 파일로 쓴다. 새 용어는 사용자에게 물어 용어집에 넣을지 정한다(용어집은 검사 기준이라 이 작업 범위에서 고치지 않는다). 글을 새로 쓰지 않는 글 작업(이미 있는 대사 JSON을 `.dtl`로 변환만 하는 등)은 작업 파일에 `"writer": "none"`을 적어 brief를 뺀다. 대사 작업에 `"dtl_dir": "dialogue"`를 적으면 그 폴더의 `.dtl`이 지금 JSON의 변환 결과와 같은지도 자동 검사한다.
    - `asset-pipeline`: `node $HFGS/scripts/assets.mjs generate TASK.json --repo $REPO [--candidates N] [--seed S]`. 이 스크립트가 asset_pipeline MCP 서버를 직접 띄워 plan의 규칙대로 돈다(`asset_build_brief` → `asset_route` → `asset_generate` → `asset_inspect_run`, `STARTING`·`RUNNING`을 벗어날 때까지 기다리기, 실패하면 재시도 없이 멈춤). 프롬프트는 매니페스트 항목의 `prompt`에서 읽는다. 후보와 규격 검사 결과는 `~/.hf-game-studio/assets/<task_id>/`에, run_id·상태·검토 상태는 작업 노트 `<task_id>.json`에 남는다. 사용자가 후보를 보고(들고) 고르면 `assets.mjs pick TASK.json <번호> --approved --repo $REPO`로 매니페스트 경로에 옮긴다. 이미지 후보는 생성 단계 원본(`NN-<run>-raw.png`)도 함께 보여 준다. 규격 검사와 Pixel Gate는 크기·알파·용량·색 수만 봐서 색 덩어리도 "규격 OK"가 되고, 원본을 보면 생성부터 망가졌는지 바로 가린다. `--approved`는 사용자의 승인을 뜻하므로 리드가 혼자 붙이지 않는다. 스크립트가 없는 환경에서만 리드가 MCP 도구를 같은 순서로 직접 부른다.
    - 작업 도중 검사만 돌려 보려면 `task.mjs check TASK.json --repo $REPO`(정적 검사와 수용 검사를 나눠 보여 준다).
    - 외부 도구 고장이나 사용자 결정 대기로 막혔으면 `task.mjs hold TASK.json --reason "이유"`로 보류를 남긴다. 범위 안 변경은 그대로 두니 버릴 것이면 git으로 되돌린다. 다시 할 때는 `start --restart`.
@@ -35,19 +35,19 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 
 | kind | 만드는 쪽 | 역할 규칙 | 자동 수용 검사 | 필수 입력 |
 |---|---|---|---|---|
-| gdd | Claude 구조 + Argon 문장 | game-designer | 없음 | |
-| lore | Claude 구조 + Argon 문장 | world-builder | 없음 | |
-| narrative | Argon 쓰고 Claude 검수 | writer | `dialogue-to-dtl.mjs --check`(스키마·그래프·용어집 인물·Dialogic 변환) | `schema` |
-| balance-data | Claude | systems-designer | 스키마(+`expect`) | `schema` |
-| economy-data | Claude | economy-designer | 스키마(+`expect`) | `schema` |
-| level | Claude | level-designer | 스키마(`schema` 있을 때) | |
+| gdd | 리드 구조 + Argon 문장 | game-designer | 없음 | |
+| lore | 리드 구조 + Argon 문장 | world-builder | 없음 | |
+| narrative | Argon 쓰고 리드 검수 | writer | `dialogue-to-dtl.mjs --check`(스키마·그래프·용어집 인물·Dialogic 변환) | `schema` |
+| balance-data | 리드 | systems-designer | 스키마(+`expect`) | `schema` |
+| economy-data | 리드 | economy-designer | 스키마(+`expect`) | `schema` |
+| level | 리드 | level-designer | 스키마(`schema` 있을 때) | |
 | art-image | asset-pipeline | technical-artist | PNG 매니페스트 | `assets_manifest`, `asset_pipeline` |
 | art-edit | asset-pipeline(CLI provider) | technical-artist | PNG 매니페스트 | 위 + `asset_pipeline.reference_image`, `workflow_id` |
 | sfx | asset-pipeline | sound-designer | WAV 매니페스트 | `assets_manifest`, `asset_pipeline` |
-| web-prototype | Claude (Phaser 4, `prototype/`) | ui-programmer | 스크린샷 + `acceptance_commands`의 Vitest. 정적: 타입 검사·구조 검사 | `screenshot`(또는 `no_visual_check`) |
-| code | Claude | gameplay-programmer | `acceptance_commands`의 테스트. 정적: 구조 검사 | |
-| godot-code | Claude (Godot 4.7, 루트) | gameplay-programmer | `godot-check.mjs all`(문법+gdUnit4+헤드리스 부팅, `GODOT_BIN` 필요). 정적: 구조 검사 | |
-| godot-scene | Claude (Godot 4.7) | ui-programmer | `godot-check.mjs all`; 화면 동작은 `acceptance_commands`의 `godot-playtest.mjs`, 모양은 `shot` 프레임을 사람이 봄. 정적: 구조 검사 | `godot-playtest.mjs`나 `godot-check.mjs shot` 수용 검사(또는 `no_visual_check`) |
+| web-prototype | 리드 (Phaser 4, `prototype/`) | ui-programmer | 스크린샷 + `acceptance_commands`의 Vitest. 정적: 타입 검사·구조 검사 | `screenshot`(또는 `no_visual_check`) |
+| code | 리드 | gameplay-programmer | `acceptance_commands`의 테스트. 정적: 구조 검사 | |
+| godot-code | 리드 (Godot 4.7, 루트) | gameplay-programmer | `godot-check.mjs all`(문법+gdUnit4+헤드리스 부팅, `GODOT_BIN` 필요). 정적: 구조 검사 | |
+| godot-scene | 리드 (Godot 4.7) | ui-programmer | `godot-check.mjs all`; 화면 동작은 `acceptance_commands`의 `godot-playtest.mjs`, 모양은 `shot` 프레임을 사람이 봄. 정적: 구조 검사 | `godot-playtest.mjs`나 `godot-check.mjs shot` 수용 검사(또는 `no_visual_check`) |
 
 ## 규칙
 
@@ -62,7 +62,7 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 - **Godot 본편.** 규칙은 `scripts/rules/`의 static 함수 + gdUnit4이고 프로토타입의 공식과 같은 숫자를 내야 한다. 대사를 바꿨으면 `dialogue-to-dtl.mjs ... --out-dir dialogue`로 `.dtl`을 다시 만든다(`.dtl`은 고치지 않는다). 화자 ID와 같은 이름의 Dialogic 캐릭터(`.dch`)는 에디터에서 만든다(사람, 또는 리드가 godot-ai로). 자동 로드 싱글턴은 `godot-check.mjs syntax`(`--check-only`)가 모르므로 `get_node("/root/Dialogic")`처럼 쓴다. `godot-check.mjs shot`의 프레임은 사람이 보는 용도이고 픽셀 비교는 하지 않는다.
 - **Godot 에디터 조작과 플레이테스트는 godot-ai MCP로 한다** (hi-godot/godot-ai 4.3.1, 8단계 평가로 선택, 마일스톤 2에서 실측).
   - 준비: `uv`를 설치하고 `godot-addons.mjs`로 `addons/godot_ai/`를 깐 뒤, 사람이(또는 리드가 백그라운드로) 에디터 GUI를 `GODOT_BIN -e --path .`로 띄운다. 애드온이 Python 서버를 띄우면 에디터 로그에 `MCP | started server (PID n)`가 찍힌다. **포트는 로그에 없다.** 기본은 8000/9500이고 이미 쓰는 서버가 있으면 8001/9501로 비켜 뜨므로, `netstat -ano`에서 그 PID가 LISTEN하는 포트를 찾는다.
-  - 붙이기: `uvx --link-mode copy --from godot-ai==4.3.1 godot-ai attach --port <포트> --ws-port <ws포트> --disable-telemetry`를 MCP 서버 명령으로 붙인다(`claude mcp add` 또는 `.mcp.json`). 텔레메트리는 `GODOT_AI_DISABLE_TELEMETRY=true`로 끈다.
+  - 붙이기: `uvx --link-mode copy --from godot-ai==4.3.1 godot-ai attach --port <포트> --ws-port <ws포트> --disable-telemetry`를 호스트의 MCP 서버로 붙인다(Claude Code는 `claude mcp add` 또는 `.mcp.json`, 다른 호스트는 그 호스트의 MCP 설정). 텔레메트리는 `GODOT_AI_DISABLE_TELEMETRY=true`로 끈다.
   - 편집: `scene_open`·`node_create`·`node_set_property`(경로는 현재 장면 기준 `/Main/...`, 실행 취소 가능)·`scene_save`, `resource_manage(create)`(Dialogic `.dch`도 만든다. "failed to write its uid" 오류가 와도 파일은 써지므로 무시), `project_manage(settings_set|settings_get)`, `filesystem_manage(scan)`. Dialogic 캐릭터 목록(`dialogic/directories/dch_directory`)은 scan으로 갱신되지 않으니 `settings_set`으로 쓰거나 에디터를 다시 띄운다.
   - 실행: `project_run`은 **`autosave:false`** 로 부른다(기본값은 장면을 저장해 템플릿 `.tscn`에 UID 등이 붙어 범위 밖 변경이 된다). 몇 초 안에 게임 쪽 도우미가 안 붙으면 `not_live`를 돌려주는데 실패가 아니라 기다리면 붙는다.
   - 조작: `game_manage(get_ui_elements|get_scene_tree)`는 현재 장면 아래만 본다. Dialogic 대사창은 루트에 붙으므로 **`root_path: ".."`** 로 부른다(`/root`는 not_found). Dialogic 대사는 `input_action(dialogic_default_action)`으로는 안 넘어가고 **`input_key Enter`** 로 넘어간다. 클릭은 `input_mouse`(motion → button pressed → released). `editor_screenshot(source=game)`, `logs_read(source=game|editor)`, 끝나면 `editor_manage(op=quit)`.
@@ -74,15 +74,36 @@ description: 멀티 모델 게임 개발 스튜디오. Claude가 리드이자 �
 - **오디오는 효과음만.** 음악·음성 생성은 없으므로 사양서(gdd)로만 다룬다.
 - **작게 시작.** 첫 마일스톤은 `examples/milestone-1.md` 크기로 한다. 원본 템플릿(Claude-Code-Game-Studios)의 디렉터 게이트·GDD 섹션 강제·질문 우선 절차는 가져오지 않았다. 프로세스가 무거울수록 결과가 나빠졌다는 실측이 있다.
 
+## 호스트
+
+리드는 이 스킬을 읽고 스크립트를 부르는 호스트 모델이다. 스크립트는 호스트를 `--host` → `HFGS_HOST` → 감지 순서로 정한다. Claude Code만 자동으로 감지하므로(`CLAUDECODE=1`), **다른 호스트에서는 `HFGS_HOST=codex|agy|gemini`를 환경에 두고 쓴다.** 근거 없이 Claude로 본 경우 경고가 나온다.
+
+| 리드 호스트 | `HFGS_HOST` | 계열 | 리드 스킬 폴더 | 기본 리뷰어 | 글 작업 |
+|---|---|---|---|---|---|
+| Claude Code | (자동) `claude` | Anthropic | `.claude/skills` | Codex | Argon에게 맡김 |
+| Codex | `codex` | OpenAI | `.codex/skills` | Claude | Argon에게 맡김 |
+| Antigravity | `agy` | Google | `.agents/skills` | Codex | 리드가 직접 |
+| Gemini CLI | `gemini` | Google | `.gemini/skills` | Codex | 리드가 직접 |
+
+- **작성자 기록.** `task.mjs start`가 호스트를 작업 기록에 남기고, 리뷰는 그 값을 작성자로 쓴다. 검증과 리뷰를 다른 셸에서 돌려도 시작한 호스트를 따른다.
+- **Antigravity는 리드 모델을 적는다.** agy는 Gemini도 Claude도 돌리므로 `HFGS_HOST_MODEL=<모델 ID>`를 함께 둔다. 없으면 리뷰가 작성자 계열을 정하지 못해 멈춘다. 다른 호스트에서도 이 값을 두면 호스트 이름보다 먼저 본다.
+- **구글 개인 요금제에서 agy를 전문가로 부르지 않는다.** 구글 측 답변에 따르면 다른 에이전트가 개인 로그인으로 `agy`를 구동하는 것은 약관 6조 위반이다. Claude·Codex 리드에서 Gemini의 글이 필요하면 `--writer vertex`(서비스 계정 키)를 쓴다. 리뷰어 기본값이 agy를 마지막에 고르는 것도 이 때문이다.
+- **실측 범위.** 마일스톤 실측은 모두 Claude Code 리드에서 했다. Codex·Antigravity·Gemini CLI 리드는 스크립트와 기본값만 맞춰 두었고 실제 세션으로 돌려 보지는 않았다. 스킬 폴더 위치는 CraftHelm이 쓰는 경로를 따랐다.
+
 ## 전문가 호출(consult)
 
 다른 계열 모델을 읽기 전용 전문가로 부른다. 전문가는 파일을 고치지 않고 결과를 JSON으로 돌려주며, 파일은 리드가 쓴다. 호출 전후로 작업 트리(추적되지 않은 파일 내용 포함)를 비교해 바뀌었으면 답을 버린다. 보고서는 `~/.hf-game-studio/reviews/`(HFGS_HOME으로 변경)에 남는다.
 
-- **리뷰:** `node $HFGS/scripts/consult.mjs review --task <task_id>`. verify가 이 명령을 출력하고, 리뷰는 verify를 통과한 작업 기록(그때의 plan과 `--base`)을 읽는다. 작업 밖에서 리뷰할 때만 `--repo $REPO --base <커밋> --criteria "AC1: ..." --check "<검사 명령>"`을 직접 쓴다. 기본 리뷰어는 Codex(Sol)이고 `--reviewer agy|grok`로 바꾼다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다. 용량 초과(`at capacity`)·과부하 같은 일시 오류는 한 번 다시 부르고, 또 실패하면 다른 계열로 바꾸라고 알린다(글쓰기도 같다).
+- **리뷰:** `node $HFGS/scripts/consult.mjs review --task <task_id>`. verify가 이 명령을 출력하고, 리뷰는 verify를 통과한 작업 기록(그때의 plan과 `--base`)을 읽는다. 작업 밖에서 리뷰할 때만 `--repo $REPO --base <커밋> --criteria "AC1: ..." --check "<검사 명령>"`을 직접 쓴다. 기본 리뷰어는 작성자와 계열이 다른 첫 전문가다(Claude·Google 계열 리드면 Codex(Sol), Codex 리드면 Claude(Opus)). `--reviewer codex|claude|grok|agy`로 바꾼다. 작성자와 같은 계열의 리뷰어는 거절한다. 리드가 아닌 모델이 쓴 변경이면 `--author codex|agy|grok`, agy가 썼으면 `--author-model`까지 적는다. pass면 종료 코드 0, 아니면 1. 줄 번호 있는 blocker·major 지적이 없는 redo는 권고로만 본다. 용량 초과(`at capacity`)·과부하 같은 일시 오류는 한 번 다시 부르고, 또 실패하면 다른 계열로 바꾸라고 알린다(글쓰기도 같다).
 - **처분:** `consult.mjs dispose <보고서> F1=act "F2=dismissed:이유"`(act, consider, noted, dismissed, contract_misread). 기각과 계약 오독에는 이유가 필요하다. `consult.mjs stats`가 리뷰어별로 쓸모 있는 지적 비율을 보여 준다.
-- **글쓰기:** `consult.mjs write <brief.json> --repo $REPO`. 기본 작가는 Gemini Argon(high). brief는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `structure`, `context_docs`, `context_sections`. `task.mjs plan`이 글 작업의 brief를 만들어 준다. agy는 한 번에 2분 정도 걸린다.
+- **글쓰기:** `consult.mjs write <brief.json> --repo $REPO`. 기본 작가는 Gemini Argon(high)이고 `--writer claude|codex|grok|vertex`로 바꾼다. 리드가 Google 계열이면 작가를 정하지 않은 호출은 거절한다(리드가 직접 쓴다). brief는 `task`(필수), `kind`, `language`(기본 ko), `format`(markdown|json), `length`, `style`, `structure`, `context_docs`, `context_sections`. `task.mjs plan`이 글 작업의 brief를 만들어 준다. agy는 한 번에 2분 정도 걸린다.
+- **글쓰기를 Vertex AI로 직접:** `consult.mjs write <brief.json> --repo $REPO --writer vertex --model <Vertex 모델 ID>`. agy를 거치지 않고 모델 API를 부른다. 구독 로그인이 아니라 서비스 계정 키로 인증하므로 요금은 Google Cloud 결제 계정(크레딧 포함)에서 나간다.
+  - 준비: `GOOGLE_APPLICATION_CREDENTIALS`에 서비스 계정 키 JSON 경로. 프로젝트는 `GOOGLE_CLOUD_PROJECT`(없으면 키 파일의 `project_id`), 리전은 `GOOGLE_CLOUD_LOCATION`(기본 `global`). 서비스 계정에 Vertex AI 사용자 역할이 있어야 한다.
+  - 모델은 기본값이 없다. `--model`이나 `HFGS_VERTEX_MODEL`로 정한다. Vertex의 모델 ID는 agy에서 쓰는 이름과 다를 수 있으니 Vertex 콘솔의 ID를 쓴다. `--effort`는 받지 않는다.
+  - 이 작가는 파일을 읽지 못한다. `context_docs`의 문서는 본문이 프롬프트에 들어가고, `context_sections`에 적은 문서는 그 섹션만 들어간다. 40KB를 넘는 문서는 섹션을 적어야 한다. `.env`와 `secrets/`는 보내지 않는다.
+  - 글쓰기 전용이다. 리뷰는 바뀐 파일을 직접 읽어야 하므로 `--reviewer vertex`는 거절한다.
 - **작업 트리 비교의 한계:** 추적 파일은 git status와 diff로만 비교한다. assume-unchanged나 clean 필터로 git이 숨기는 변경은 잡지 못한다. 실수를 잡는 장치이지 의도적 우회를 막는 장치가 아니다.
-- **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
+- **MCP:** Codex는 사용자 설정의 MCP 서버(asset_pipeline 등)를 모두 끄고 부른다. Claude는 읽기 도구(Read, Glob, Grep)만 주고 MCP·셸·편집을 막아 부른다. agy는 실행 단위로 끌 수 없어 켜진 서버를 경고한다. 쓰기 도구가 있는 서버는 `agy mcp disable`로 꺼 두는 편이 안전하다.
 
 ## 실험 (v3 P0, 시험 중)
 

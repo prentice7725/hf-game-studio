@@ -2,11 +2,11 @@
 
 [English](README.en.md) · [日本語](README.ja.md)
 
-**Claude Code로 게임을 만들 때 쓰는 스킬입니다.** Claude가 기획과 코드를 직접 맡고, 다른 AI는 잘하는 일에만 부릅니다.
+**AI 코딩 도구로 게임을 만들 때 쓰는 스킬입니다.** 지금 쓰는 도구(Claude Code, Codex, Antigravity, Gemini CLI)의 모델이 리드가 되어 기획과 코드를 직접 맡고, 다른 AI는 잘하는 일에만 부릅니다.
 
 | 일 | 맡는 쪽 |
 |---|---|
-| 기획, 코드, 수치, 검수 | Claude |
+| 기획, 코드, 수치, 검수 | 리드(지금 쓰는 도구의 모델) |
 | 시나리오, 대사 | Gemini (Argon) |
 | 이미지, 효과음 | [asset-pipeline](https://github.com/prentice7725/asset-pipeline) (ComfyUI 등) |
 | 코드 리뷰 | 다른 회사 모델 (기본 Codex) |
@@ -22,7 +22,9 @@ AI에게 게임을 맡기면 두 가지가 자주 무너집니다.
 
 ## 설치
 
-필요한 것: Node.js 24 이상, Git, Claude Code. 다른 AI는 쓸 것만 깔면 됩니다(`codex`, `agy`, asset-pipeline).
+필요한 것: Node.js 24 이상, Git, 리드로 쓸 도구 하나(Claude Code, Codex, Antigravity, Gemini CLI). 다른 AI는 쓸 것만 깔면 됩니다(`codex`, `claude`, `agy`, asset-pipeline).
+
+글쓰기는 `agy` 없이 Vertex AI를 직접 불러도 됩니다(`--writer vertex`). 서비스 계정 키 JSON을 `GOOGLE_APPLICATION_CREDENTIALS`로 가리키면 되고, 자세한 것은 `SKILL.md`의 "글쓰기를 Vertex AI로 직접"에 있습니다.
 
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
@@ -36,18 +38,30 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 
 설계 문서 뼈대(`design/`), 검사 도구(`tools/hfgs/`), 보조 스킬(`.claude/skills/gs-*`)이 생깁니다. 있는 파일은 덮어쓰지 않습니다.
 
+### Claude Code가 아닌 도구에서
+
+스킬을 그 도구의 스킬 폴더에 받고, `HFGS_HOST`로 리드가 누구인지 알려 줍니다(Claude Code는 자동으로 압니다).
+
+| 리드 | 스킬을 받는 곳 | 환경변수 | 설치 |
+|---|---|---|---|
+| Codex | `~/.codex/skills/hf-game-studio` | `HFGS_HOST=codex` | `setup.mjs <게임 저장소> --host=codex` |
+| Antigravity | `~/.gemini/config/skills/hf-game-studio` | `HFGS_HOST=agy`, `HFGS_HOST_MODEL=<모델 ID>` | `setup.mjs <게임 저장소> --host=agy` |
+| Gemini CLI | `~/.gemini/skills/hf-game-studio` | `HFGS_HOST=gemini` | `setup.mjs <게임 저장소> --host=gemini` |
+
+리드에 따라 리뷰어와 글 담당이 달라집니다. Codex가 리드면 Claude가 리뷰하고, Antigravity나 Gemini CLI가 리드면 글을 리드가 직접 씁니다. 자세한 것은 `SKILL.md`의 "호스트"에 있습니다. 실제 세션으로 돌려 본 것은 Claude Code 리드뿐입니다.
+
 - 웹 프로토타입(Phaser 4)도 깔려면 `--phaser`
 - Godot 4.7 본편도 깔려면 `--godot`
 
 ## 쓰는 법
 
-게임 저장소에서 Claude Code를 열고 말로 시키면 됩니다. 예:
+게임 저장소에서 리드 도구(Claude Code 등)를 열고 말로 시키면 됩니다. 예:
 
 - "용병 데이터 첫 항목 만들어 줘"
 - "계약 게시판 화면 프로토타입 만들어 줘"
 - "주인공 초상화 후보 세 장 뽑아 줘"
 
-Claude가 알아서 아래 순서를 밟습니다.
+리드가 알아서 아래 순서를 밟습니다.
 
 ```text
 작업 정의 → 검사가 먼저 실패하는지 확인 → 구현 → 검사 통과 확인 → 다른 AI가 리뷰 → (그림·소리는) 사람이 승인
@@ -78,7 +92,7 @@ Claude가 알아서 아래 순서를 밟습니다.
 ## 더 읽을 것
 
 - [docs/reference.md](docs/reference.md): 파일 구성, 작업 파일 필드, 작업 종류, 애셋·Godot 절차, 주의할 점
-- [SKILL.md](SKILL.md): Claude가 따르는 절차
+- [SKILL.md](SKILL.md): 리드가 따르는 절차
 - [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md), [game-studio-v3.md](docs/design/game-studio-v3.md): 설계 배경과 실측 기록
 
 ## 테스트

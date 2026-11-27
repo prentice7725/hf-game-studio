@@ -2,11 +2,11 @@
 
 [한국어](README.md) · [English](README.en.md)
 
-**Claude Code でゲームを作るためのスキルです。** 企画とコードは Claude が自分で担当し、ほかの AI は得意な仕事にだけ呼びます。
+**AI コーディングツールでゲームを作るためのスキルです。** いま使っているツール(Claude Code、Codex、Antigravity、Gemini CLI)のモデルがリードになり、企画とコードを自分で担当し、ほかの AI は得意な仕事にだけ呼びます。
 
 | 仕事 | 担当 |
 |---|---|
-| 企画、コード、数値、検収 | Claude |
+| 企画、コード、数値、検収 | リード(使っているツールのモデル) |
 | シナリオ、セリフ | Gemini (Argon) |
 | 画像、効果音 | [asset-pipeline](https://github.com/prentice7725/asset-pipeline)(ComfyUI など) |
 | コードレビュー | 別の会社のモデル(既定は Codex) |
@@ -22,7 +22,7 @@ AI にゲームを任せると、よく二つのことが崩れます。
 
 ## インストール
 
-必要なもの: Node.js 24 以上、Git、Claude Code。ほかの AI は使うものだけ入れれば十分です(`codex`、`agy`、asset-pipeline)。
+必要なもの: Node.js 24 以上、Git、リードにするツール 1 つ(Claude Code、Codex、Antigravity、Gemini CLI)。ほかの AI は使うものだけ入れれば十分です(`codex`、`claude`、`agy`、asset-pipeline)。
 
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
@@ -36,18 +36,30 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <ゲームのリポジト
 
 設計ドキュメントのひな形(`design/`)、チェックツール(`tools/hfgs/`)、補助スキル(`.claude/skills/gs-*`)が入ります。既存のファイルは上書きしません。
 
+### Claude Code 以外のツールで使う
+
+スキルをそのツールのスキルフォルダに置き、`HFGS_HOST` でリードが誰かを伝えます(Claude Code は自動で判別します)。
+
+| リード | スキルの置き場所 | 環境変数 | セットアップ |
+|---|---|---|---|
+| Codex | `~/.codex/skills/hf-game-studio` | `HFGS_HOST=codex` | `setup.mjs <ゲームのリポジトリ> --host=codex` |
+| Antigravity | `~/.gemini/config/skills/hf-game-studio` | `HFGS_HOST=agy`、`HFGS_HOST_MODEL=<モデル ID>` | `setup.mjs <ゲームのリポジトリ> --host=agy` |
+| Gemini CLI | `~/.gemini/skills/hf-game-studio` | `HFGS_HOST=gemini` | `setup.mjs <ゲームのリポジトリ> --host=gemini` |
+
+リードによってレビュアーと文章の担当が変わります。Codex がリードなら Claude がレビューし、Antigravity や Gemini CLI がリードなら文章はリードが自分で書きます。詳しくは `SKILL.md` の「호스트」(韓国語)にあります。実際のセッションで動かしたのは Claude Code リードだけです。
+
 - Web プロトタイプ(Phaser 4)も入れるなら `--phaser`
 - Godot 4.7 の本編も入れるなら `--godot`
 
 ## 使い方
 
-ゲームのリポジトリで Claude Code を開き、言葉で頼むだけです。例:
+ゲームのリポジトリでリードのツール(Claude Code など)を開き、言葉で頼むだけです。例:
 
 - 「傭兵データの最初の項目を作って」
 - 「依頼掲示板の画面をプロトタイプで作って」
 - 「主人公の肖像画の候補を3枚出して」
 
-Claude は次の順序を自分で踏みます。
+リードは次の順序を自分で踏みます。
 
 ```text
 作業の定義 → チェックがまず失敗することを確認 → 実装 → チェックが通ることを確認 → 別の AI がレビュー →(画像・音は)人が承認
@@ -80,7 +92,7 @@ Claude は次の順序を自分で踏みます。
 詳しいドキュメントは韓国語です。
 
 - [docs/reference.md](docs/reference.md): ファイル構成、作業ファイルの項目、作業の種類、アセット・Godot の手順、注意点
-- [SKILL.md](SKILL.md): Claude が従う手順
+- [SKILL.md](SKILL.md): リードが従う手順
 - [docs/design/game-studio-v2.md](docs/design/game-studio-v2.md)、[game-studio-v3.md](docs/design/game-studio-v3.md): 設計の背景と実測の記録
 
 ## テスト

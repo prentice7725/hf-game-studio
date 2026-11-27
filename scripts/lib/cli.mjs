@@ -98,7 +98,10 @@ const READ_SHELL='If your only way to read files is a shell, you MAY run read-on
 const READ_TOOLS='Read files only with your file view tools. Run no shell commands at all (not even git diff, cat or ls): headless mode auto-denies them and one denied command ends this run with no result.';
 const READ_GENERIC='Read files with your file read tools only.';
 export const SECRET_ORDER='Never read .env, .env.* or secrets/**, including nested copies or through shell/search tools.';
+// inline: 파일도 도구도 없는 작가(모델 API 직접 호출). 필요한 문서는 프롬프트에 본문으로 들어 있다.
+const INLINE='You have no file access and no tools. Everything you may rely on is in this message: the design docs are included in design_docs with their text. Do not assume the contents of any file that is not included; if something you need is missing, say so in notes.';
 export function readOnlyOrders(reader){
+ if(reader==='inline')return [INLINE];
  return [READ_ONLY_BASE,reader==='shell'?READ_SHELL:reader==='tools'?READ_TOOLS:READ_GENERIC,SECRET_ORDER];
 }
 export const SECRET_READ_PATHS=['./.env','./.env.*','**/.env','**/.env.*','./secrets/**','**/secrets/**'];

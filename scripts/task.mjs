@@ -9,7 +9,8 @@
 //   verify TASK.json   정적·수용 검사 통과 + 범위 밖 변경 없음 + 검사 기준 파일 불변을 확인하고, 다른 계열 리뷰 명령을 알려 준다.
 //                      --base REV는 리뷰 기준 커밋(기본 start 때의 HEAD)을 바꾼다. 작업 도중 준비 변경을 따로 커밋했을 때 쓴다.
 //   hold   TASK.json   막힌 작업을 보류로 남긴다(--reason 필수). 다시 하려면 start --restart.
-// 사용법: node scripts/task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--restart] [--base REV] [--reason TEXT] [--json]
+// 사용법: node scripts/task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--host claude|codex|agy|gemini] [--restart] [--base REV] [--reason TEXT] [--json]
+//   --host  리드 호스트(없으면 HFGS_HOST, Claude Code는 자동 감지). 리드가 Google 계열이면 글 작업에 작가를 따로 부르지 않는다.
 // 상태는 HFGS_HOME(기본 ~/.hf-game-studio)/tasks/<task_id>.json에 남는다. 게임 저장소 안에는 쓰지 않는다.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,6 +19,7 @@ import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {runChecks,passed,broken,checkEntry,displayCheck,quote} from './lib/checks.mjs';
+import {resolveHost,hostFamily,hostWarning,HOSTS} from './lib/host.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT=path.resolve(HERE,'..');
@@ -87,6 +89,27 @@ export function docDirectives(docs,picked,{repo,warn}){
  }
  if(full.length)out.unshift(`Read in full: ${full.join(', ')}.`);
  return out;
+}
+
+// 파일을 읽지 못하는 작가(모델 API 직접 호출)에게는 읽으라는 지시 대신 본문을 넣어 준다.
+// 고르는 규칙은 docDirectives와 같다: context_sections에 적은 문서는 그 섹션만, 작은 문서는 통째로.
+// 큰 문서는 작가가 제목을 훑어볼 수 없으므로 섹션을 적어야 한다. 비밀 파일은 밖으로 보내지 않는다.
+const SECRET_DOC=/(^|\/)(\.env(\..*)?$|secrets\/)/;
+export function docContents(docs,picked,{repo}){
+ return docs.map(d=>{
+  if(SECRET_DOC.test(d.replaceAll('\\','/')))fail(`비밀 파일은 작가에게 보내지 않음: ${d}`);
+  const text=fs.readFileSync(path.join(repo,d),'utf8'),want=picked[d];
+  if(want){
+   const all=sections(text),lines=text.split(/\r?\n/);
+   return {path:d,sections:want.map(name=>{
+    const hit=all.find(x=>x.title===name);
+    if(!hit)fail(`context_sections: ${d}에 "${name}" 섹션이 없음 (있는 제목: ${all.map(x=>x.title).join(', ')||'없음'})`);
+    return {title:name,content:lines.slice(hit.start-1,hit.end).join('\n')};
+   })};
+  }
+  if(Buffer.byteLength(text)>LARGE_DOC_BYTES)fail(`${d}는 ${Math.round(Buffer.byteLength(text)/1024)}KB라 통째로 보내지 않음: 이 작가는 파일을 읽지 못하므로 context_sections에 필요한 섹션을 적을 것`);
+  return {path:d,content:text};
+ });
 }
 
 // asset_pipeline: 이미지·효과음은 리드가 asset-pipeline MCP 서버(asset_build_brief → asset_route → asset_generate → asset_inspect_run)로 직접 만든다.
@@ -251,7 +274,7 @@ export function criteriaFiles(input,kind,extra=[]){
 }
 
 // baselineWarning: red-first 경고는 시작 전(plan·start)에만 뜻이 있다. check·verify는 끈다.
-export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},baselineWarning=true}={}){
+export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},baselineWarning=true,host=resolveHost().host}={}){
  const table=loadKinds(root);
  if(!input||typeof input!=='object')fail('작업 파일이 객체가 아님');
  const kind=table.kinds[input.kind];
@@ -265,7 +288,9 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
  for(const k of kind.require??[])if(!str(input[k]))fail(`${input.kind} 작업에는 ${k}가 필요함`);
  // 글을 새로 쓰지 않는 작업(이미 있는 대사를 변환만 하는 등)은 writer: "none"으로 작가 brief를 뺀다.
  if(input.writer!==undefined&&input.writer!=='none')fail('작업 파일의 writer는 "none"만 쓸 수 있음(작가를 부르지 않는 글 작업)');
- const writer=input.writer==='none'?null:kind.writer;
+ // 작가(Gemini Argon)는 리드와 다른 모델일 때만 따로 부른다. 리드가 Google 계열이면 리드가 직접 쓴다.
+ const leadWrites=!!kind.writer&&input.writer!=='none'&&hostFamily(host)==='google';
+ const writer=input.writer==='none'||leadWrites?null:kind.writer;
  let pipeline=[];
  if(input.asset_pipeline!==undefined){
   if(!kind.pipeline){
@@ -296,7 +321,8 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
   return ok;
  });
  const reading=docs.length?docDirectives(docs,picked,{repo,warn}):[];
- const rules=[...(kind.rules??[]),...(role?roleDirectives(role,root):[]),...pipeline,...(input.rules??[])];
+ const rules=[...(kind.rules??[]),...(role?roleDirectives(role,root):[]),...pipeline,...(input.rules??[]),
+  ...(leadWrites?['You are the writer for this task: the lead is a Google-family model, so no separate writer is called. Use only names and terms from the glossary and world docs; list any new proper noun for the user to approve.']:[])];
 
  const auto=autoAcceptance(input,kind);
  // red-first: start는 손대기 전 트리에서 수용 검사가 모두 통과하면 거절한다(맞는 결과와 엉터리 결과를 가르지 못하는 검사).
@@ -342,7 +368,8 @@ export function plan(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},base
    ...(role?{style:roleDirectives(role,root).join(' ')}:{}),
    context_docs:docs,...(Object.keys(picked).length?{context_sections:picked}:{})};
  }
- return {task_id:input.task_id,kind:input.kind,owner:kind.owner??'claude',...(writer?{writer}:{}),objective:input.objective,
+ // 예전 표기(owner: claude)는 리드를 뜻한다.
+ return {task_id:input.task_id,kind:input.kind,owner:!kind.owner||kind.owner==='claude'?'lead':kind.owner,...(writer?{writer}:{}),...(leadWrites?{lead_writes:true}:{}),host,objective:input.objective,
   scope:input.scope.paths,allow_out_of_scope:input.allow_out_of_scope??[],success_criteria:input.success_criteria,criteria_files:criteria,
   reading,rules,static_commands:st.commands,...(st.off?{static_off:st.off}:{}),acceptance_commands:commands,...(map?{acceptance_map:map}:{}),
   ...(str(input.no_visual_check)?{no_visual_check:input.no_visual_check.trim()}:{}),...(write?{write_brief:write}:{})};
@@ -391,8 +418,8 @@ function writeState(state,env){
 
 // start: red-first와 작업 전 기록. 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 한다.
 // 모두 통과하면 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하므로 거절한다(baseline_green에 이유를 적으면 예외).
-export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},restart=false,env=process.env,checks=runChecks,git=gitOut}={}){
- const p=plan(input,{repo,root,warn});
+export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},restart=false,env=process.env,checks=runChecks,git=gitOut,host=resolveHost({env}).host}={}){
+ const p=plan(input,{repo,root,warn,host});
  const old=readState(p.task_id,env);
  if(old?.held&&!restart)fail(`보류한 작업(${old.held.reason}, ${old.held.at}): 다시 하려면 --restart`);
  if(old&&!old.verify?.ok&&!restart)fail(`이미 시작한 작업: ${stateFile(p.task_id,env)}. 이어서 하려면 check·verify를, 처음부터 다시 하려면 --restart`);
@@ -428,7 +455,8 @@ export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},res
  }
  const green=baseline.filter(passed).map(r=>r.command);
  if(red.length&&green.length)warn(`처음부터 통과하는 검사 ${green.length}개는 작업 결과를 가르지 못함: ${green.join(' ; ')}`);
- const state={task_id:p.task_id,kind:p.kind,repo:path.resolve(repo),started_at:new Date().toISOString(),head:head(repo,git),
+ // host: 누가 리드였는지. 리뷰가 작성자 계열을 여기서 읽는다.
+ const state={task_id:p.task_id,kind:p.kind,host:p.host,repo:path.resolve(repo),started_at:new Date().toISOString(),head:head(repo,git),
   baseline:{red,green,results:baseline,...(str(input.baseline_green)?{green_reason:input.baseline_green}:{})},
   static_baseline:staticBase,dirty_before:hashFiles(repo,dirty),criteria_before:hashFiles(repo,p.criteria_files),plan:p};
  return {plan:p,state,file:writeState(state,env)};
@@ -445,8 +473,8 @@ export function hold(input,{reason,env=process.env}={}){
  return {state,file:writeState(state,env)};
 }
 
-export function check(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},checks=runChecks}={}){
- const p=plan(input,{repo,root,warn,baselineWarning:false});
+export function check(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},checks=runChecks,host=resolveHost().host}={}){
+ const p=plan(input,{repo,root,warn,baselineWarning:false,host});
  // 정적 검사가 실패해도 수용 검사는 돌려 결과를 함께 보여 준다.
  const static_results=checks(repo,p.static_commands),results=checks(repo,p.acceptance_commands);
  return {plan:p,static_results,results,ok:static_results.every(passed)&&results.every(passed)};
@@ -481,8 +509,10 @@ export function reviewCommand(taskId,{studio=STUDIO_ROOT}={}){
  return ['node',slashPath(path.join(studio,'scripts','consult.mjs')),'review','--task',taskId].map(quote).join(' ');
 }
 
-export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},env=process.env,checks=runChecks,git=gitOut,base}={}){
- const p=plan(input,{repo,root,warn,baselineWarning:false});
+export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},env=process.env,checks=runChecks,git=gitOut,base,host=resolveHost({env}).host}={}){
+ // 작업을 시작한 호스트가 기록돼 있으면 그것을 쓴다. 검증을 다른 셸에서 돌려도 계획(작가를 따로 부르는지)이 달라지지 않는다.
+ let started=null;try{started=readState(input?.task_id,env);}catch{/* task_id 형식 오류는 아래 plan이 알린다 */}
+ const p=plan(input,{repo,root,warn,baselineWarning:false,host:started?.host??host});
  const state=readState(p.task_id,env);
  if(!state)fail(`시작 기록이 없음: 먼저 task.mjs start로 red-first 기준선을 남길 것 (${stateFile(p.task_id,env)})`);
  if(path.resolve(repo)!==state.repo)fail(`시작한 저장소(${state.repo})와 다름: ${path.resolve(repo)}`);
@@ -521,7 +551,7 @@ export function verify(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},en
 
 // ── CLI ──
 function printPlan(p){
- console.log(`작업 ${p.task_id} (${p.kind}, 담당: ${p.owner}${p.writer?`, 글: ${p.writer}`:''})`);
+ console.log(`작업 ${p.task_id} (${p.kind}, 담당: ${p.owner}${p.writer?`, 글: ${p.writer}`:p.lead_writes?', 글: 리드가 직접':''}, 리드 호스트: ${HOSTS[p.host]?.label??p.host})`);
  console.log(`목표: ${p.objective}`);
  console.log(`범위: ${p.scope.join(', ')}`);
  if(p.criteria_files.length)console.log(`검사 기준(바꾸지 않을 것): ${p.criteria_files.join(', ')}`);
@@ -547,7 +577,7 @@ function parseArgs(args){
  for(let i=0;i<args.length;i++){
   const a=args[i];
   if(a==='--repo'){o.repo=args[++i];if(o.repo===undefined)fail('--repo에 값이 필요함');}
-  else if(a==='--base'||a==='--reason'){o[a.slice(2)]=args[++i];if(o[a.slice(2)]===undefined)fail(`${a}에 값이 필요함`);}
+  else if(a==='--base'||a==='--reason'||a==='--host'){o[a.slice(2)]=args[++i];if(o[a.slice(2)]===undefined)fail(`${a}에 값이 필요함`);}
   else if(a==='--restart')o.restart=true;
   else if(a==='--json')o.json=true;
   else if(a.startsWith('--'))fail(`알 수 없는 인자: ${a}`);
@@ -558,25 +588,28 @@ function parseArgs(args){
 
 function main(){
  const [cmd,file]=process.argv.slice(2),a=parseArgs(process.argv.slice(4));
- if(!['plan','start','check','verify','hold'].includes(cmd)||!file)fail('사용법: task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--restart] [--base REV] [--reason TEXT] [--json]');
+ if(!['plan','start','check','verify','hold'].includes(cmd)||!file)fail('사용법: task.mjs <plan|start|check|verify|hold> <TASK.json> [--repo DIR] [--host H] [--restart] [--base REV] [--reason TEXT] [--json]');
  const repo=path.resolve(a.repo??process.cwd()),input=JSON.parse(fs.readFileSync(file,'utf8')),warn=m=>console.error('경고: '+m);
+ const resolved=resolveHost({flag:a.host}),host=resolved.host;
+ if(hostWarning(resolved)&&(cmd==='plan'||cmd==='start'))warn(hostWarning(resolved));
  if(cmd==='plan'){
-  const p=plan(input,{repo,warn});
+  const p=plan(input,{repo,warn,host});
   if(a.json)console.log(JSON.stringify(p,null,2));else printPlan(p);
   return 0;
  }
  if(cmd==='start'){
-  const {plan:p,state,file:f}=start(input,{repo,warn,restart:a.restart});
+  const {plan:p,state,file:f}=start(input,{repo,warn,restart:a.restart,host});
   if(a.json){console.log(JSON.stringify({plan:p,state},null,2));return 0;}
   printPlan(p);
   const sb=state.static_baseline??[];
   if(sb.length)console.log(`\n정적 검사 기준선: ${sb.length}/${sb.length} 통과`);
   console.log(`${sb.length?'':'\n'}red-first: 손대기 전 트리에서 ${state.baseline.red.length}개 실패, ${state.baseline.green.length}개 통과 (기록: ${f})`);
-  console.log('다음: 담당이 claude면 직접 구현하고, argon이면 위 작가 brief로 consult.mjs write를 돌린 뒤 결과를 범위 안 파일로 쓸 것. 끝나면 task.mjs verify.');
+  console.log(p.write_brief?'다음: 위 작가 brief로 consult.mjs write를 돌린 뒤 결과를 검수해 범위 안 파일로 쓸 것. 끝나면 task.mjs verify.'
+   :p.owner==='lead'?'다음: 리드가 직접 구현할 것. 끝나면 task.mjs verify.':`다음: 담당(${p.owner})의 절차대로 만들 것. 끝나면 task.mjs verify.`);
   return 0;
  }
  if(cmd==='check'){
-  const {static_results,results,ok}=check(input,{repo,warn});
+  const {static_results,results,ok}=check(input,{repo,warn,host});
   printResults(static_results,'정적 검사');printResults(results,'수용 검사');
   return ok?0:1;
  }
@@ -585,7 +618,7 @@ function main(){
   console.log(`보류: ${state.task_id} (${state.held.reason}). 기록: ${f}\n범위 안 변경은 그대로다. 버릴 것이면 git으로 되돌리고, 다시 할 때는 start --restart.`);
   return 0;
  }
- const r=verify(input,{repo,warn,base:a.base});
+ const r=verify(input,{repo,warn,base:a.base,host});
  if(a.json){console.log(JSON.stringify(r,null,2));return r.ok?0:1;}
  printResults(r.static_results,'정적 검사');printResults(r.results,'수용 검사');
  console.log('수용 기준:');for(const x of r.ac)console.log(`  ${x.status==='pass'?'PASS  ':x.status==='fail'?'FAIL  ':'직접 확인'} ${x.criterion}`);
