@@ -18,11 +18,13 @@ export const binary=(env=process.env)=>env.HFGS_AGY_BIN||'agy';
 export const requiredFlags=['--output-format','--json-schema','--mode','--add-dir','--print','--sandbox','--model'];
 
 // ── 모델 고르기 ──
-// agy에서 강도는 모델 ID에 붙은 접미사가 정본이다(gemini-4-argon-high). Gemini가 아닌 모델만 --effort를 쓴다.
+// agy에서 강도는 모델 ID에 붙은 접미사가 정본이다(gemini-4-argon-high, gemini-4-neon-xhigh). Gemini가 아닌 모델만 --effort를 쓴다.
 const GEMINI=/^gemini-\d+(?:\.\d+)*-[a-z0-9][a-z0-9-]*$/;
-const SUFFIX=/-(low|medium|high)$/;
+const SUFFIX=/-(low|medium|high|xhigh)$/;
 export const GEMINI_EFFORTS=['low','medium','high'];
-export const supportedEfforts=model=>/^claude-(?:opus|sonnet)-/.test(model??'')?[...GEMINI_EFFORTS,'max']:GEMINI_EFFORTS;
+export const supportedEfforts=model=>/^claude-(?:opus|sonnet)-/.test(model??'')
+ ?[...GEMINI_EFFORTS,'max']
+ :/^gemini-4-(?:neon|hydrogen)(?:-|$)/.test(model??'')?[...GEMINI_EFFORTS,'xhigh']:GEMINI_EFFORTS;
 export const modelEffort=model=>typeof model==='string'&&GEMINI.test(model)?SUFFIX.exec(model)?.[1]??null:null;
 export function selectModel({model=DEFAULT_MODEL,reasoning_effort:effort=model===DEFAULT_MODEL?DEFAULT_EFFORT:undefined}={}){
  const pin=modelEffort(model),effective=pin??effort??null;

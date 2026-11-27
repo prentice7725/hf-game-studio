@@ -1,7 +1,6 @@
 ---
 name: gs-experiment
 description: 게임플레이 질문 하나를 실험 카드(design/experiments/EXP-NNN-*.json)와 그 카드의 작업 파일로 만든다. 가설, 반증 조건, 측정, 범위, 예산을 만들기 전에 적는다. /gs-inspect에서 질문을 골랐을 때, 사용자가 "이게 재미있을지 확인해 보자"고 할 때 쓴다.
-argument-hint: "<질문>"
 ---
 # 실험 카드
 
@@ -93,7 +92,7 @@ argument-hint: "<질문>"
 node $HFGS/scripts/experiment.mjs lint design/experiments/EXP-NNN-<slug>.json --repo .
 ```
 
-`$HFGS`는 hf-game-studio 스킬 디렉터리다. 통과하면 사용자에게 카드를 보인다: 질문, 가설, 반증 조건, 측정, 범위, 예산을 여섯 줄 안쪽으로. **사용자가 승인한 뒤에만** 작업을 시작한다. 승인한 카드는 첫 작업 전에 커밋한다(사용자에게 묻는다). 준비 변경이 리뷰 diff에 섞이지 않게 하기 위해서다.
+`$HFGS`는 hf-game-studio 설치 디렉터리다. 통과하면 사용자에게 카드를 보인다: 질문, 가설, 반증 조건, 측정, 범위, 예산을 여섯 줄 안쪽으로. **사용자가 승인한 뒤에만** 작업을 시작한다. 승인한 카드는 첫 작업 전에 커밋한다(사용자에게 묻는다). 준비 변경이 리뷰 diff에 섞이지 않게 하기 위해서다.
 
 ## 6. 작업 파일
 

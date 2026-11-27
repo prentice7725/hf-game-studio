@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {serverCommand,McpClient,generate,pick,target,briefArgs,prepareBrief,pickOutput,noteFile,PENDING} from '../scripts/assets.mjs';
+import {serverCommand,parseJsonc,parseCodexMcpToml,McpClient,generate,pick,target,briefArgs,prepareBrief,pickOutput,noteFile,PENDING} from '../scripts/assets.mjs';
 import {STUDIO_ROOT} from '../scripts/task.mjs';
 
 const example=name=>JSON.parse(fs.readFileSync(path.join(STUDIO_ROOT,'examples','tasks',name)));
@@ -94,17 +94,84 @@ async function withClient(server,fn){
 }
 const quick={intervalMs:1,sleep:()=>Promise.resolve()};
 
-test('serverCommand: HFGS_ASSET_MCP가 우선, 없으면 ~/.claude.json의 asset_pipeline, 둘 다 없으면 등록 안내',()=>{
+test('serverCommand: HFGS_ASSET_MCP 최우선, 없으면 현재 호스트 우선으로 Antigravity·Claude·Codex 설정 탐색',t=>{
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-home-'));
- assert.throws(()=>serverCommand({env:{},home}),/mcpServers에 asset_pipeline가 없음.*claude mcp add/);
- fs.writeFileSync(path.join(home,'.claude.json'),JSON.stringify({mcpServers:{asset_pipeline:{type:'stdio',command:'python',args:['launch.py'],env:{A:'1'}}}}));
- const s=serverCommand({env:{},home});
- assert.deepEqual([s.command,s.args,s.env],['python',['launch.py'],{A:'1'}]);
- assert.match(s.source,/claude\.json mcpServers\.asset_pipeline/);
+ t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
+ const cfgDir=path.join(home,'.gemini','config');
+ const globalMcp=path.join(cfgDir,'mcp_config.json');
+ const pluginsDir=path.join(cfgDir,'plugins');
+ fs.mkdirSync(pluginsDir,{recursive:true});
+
+ // 3개 호스트 모두 없으면 통합 안내 오류
+ assert.throws(()=>serverCommand({env:{},home}),/\.gemini[\\/]config[\\/]mcp_config\.json.*\.claude\.json.*\.codex[\\/]config\.toml.*asset_pipeline가 없음/);
+
+ // 1) Claude 단독 설정 (~/.claude.json) 탐색
+ const claudeFile=path.join(home,'.claude.json');
+ fs.writeFileSync(claudeFile,JSON.stringify({mcpServers:{asset_pipeline:{type:'stdio',command:'from-claude',args:['c1'],env:{C:'1'}}}}));
+ assert.equal(serverCommand({env:{},home}).command,'from-claude');
+
+ // 2) Codex 단독 설정 (CODEX_HOME/config.toml) 및 리터럴/다중줄/환경변수 파싱
+ const codexHome=fs.mkdtempSync(path.join(os.tmpdir(),'hfgs-codex-'));
+ t.after(()=>fs.rmSync(codexHome,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(codexHome,'config.toml'),`
+[mcp_servers."asset-pipeline"]
+command = 'C:\\tools\\assetpipe.exe' # 주석
+args = [
+  "--config",
+  'C:\\cfg\\adapter.yaml',
+]
+[mcp_servers."asset-pipeline".env]
+TOKEN = "abc"
+`);
+ assert.equal(serverCommand({env:{HFGS_HOST:'codex',CODEX_HOME:codexHome},home}).command,'C:\\tools\\assetpipe.exe');
+ assert.deepEqual(serverCommand({env:{CODEX_HOME:codexHome},home,host:'codex'}).args,['--config','C:\\cfg\\adapter.yaml']);
+ assert.deepEqual(serverCommand({env:{CODEX_HOME:codexHome},home,host:'codex'}).env,{TOKEN:'abc'});
+
+ // 3) Antigravity 플러그인 탐색: JSONC + config.json 디렉터리 키 enabled 덮어쓰기
+ const disabledByManifest=path.join(pluginsDir,'plugin-off');
+ fs.mkdirSync(disabledByManifest);
+ fs.writeFileSync(path.join(disabledByManifest,'plugin.json'),`{
+  // 주석이고 문자열 안의 "https://example.com//x" 는 살린다
+  "name": "other-name",
+  "homepage": "https://example.com//docs",
+  "disabled": true,
+ }`);
+ fs.writeFileSync(path.join(disabledByManifest,'mcp_config.json'),JSON.stringify({mcpServers:{asset_pipeline:{command:'from-plugin-off',args:['a']}}}));
+ // 비활성 플러그인은 건너뛰고 Claude 설정이 반환된다.
+ assert.equal(serverCommand({env:{},home}).command,'from-claude');
+
+ // config.json에서 디렉터리 이름으로 enabled: true를 주면 plugin.json의 disabled: true를 덮어쓴다.
+ fs.writeFileSync(path.join(cfgDir,'config.json'),JSON.stringify({plugins:{'plugin-off':{enabled:true}}}));
+ const fromOff=serverCommand({env:{},home});
+ assert.equal(fromOff.command,'from-plugin-off');
+ assert.match(fromOff.source,/plugin-off[\\/]mcp_config\.json mcpServers\.asset_pipeline/);
+
+ // 반대로 plugin.json은 활성이어도 config.json에서 enabled: false하면 건너뛴다.
+ const enabledManifest=path.join(pluginsDir,'a-plugin-on');
+ fs.mkdirSync(enabledManifest);
+ fs.writeFileSync(path.join(enabledManifest,'plugin.json'),'{"name":"ap","disabled":false}');
+ fs.writeFileSync(path.join(enabledManifest,'mcp_config.json'),JSON.stringify({mcpServers:{asset_pipeline:{command:'from-plugin-on',args:['b']}}}));
+ fs.writeFileSync(path.join(cfgDir,'config.json'),JSON.stringify({plugins:{'a-plugin-on':{enabled:false},'plugin-off':{enabled:true}}}));
+ assert.equal(serverCommand({env:{},home}).command,'from-plugin-off');
+
+ // CLAUDECODE=1이면 Antigravity보다 Claude 설정이 우선한다.
+ assert.equal(serverCommand({env:{CLAUDECODE:'1'},home}).command,'from-claude');
+
+ // 4) Antigravity 전역 mcp_config.json은 플러그인보다 우선한다.
+ fs.writeFileSync(globalMcp,JSON.stringify({mcpServers:{asset_pipeline:{command:'from-global',args:['g']}}}));
+ const fromGlobal=serverCommand({env:{},home});
+ assert.equal(fromGlobal.command,'from-global');
+ assert.match(fromGlobal.source,/mcp_config\.json mcpServers\.asset_pipeline/);
+
+ // 5) HFGS_ASSET_MCP 최우선 및 유효성 검사
  assert.equal(serverCommand({env:{HFGS_ASSET_MCP:'{"command":"x","args":["--config","a.yaml"]}'},home}).args[1],'a.yaml');
  assert.throws(()=>serverCommand({env:{HFGS_ASSET_MCP:'{"command":"x","type":"http"}'},home}),/stdio 서버만/);
+ assert.throws(()=>serverCommand({env:{HFGS_ASSET_MCP:'{"command":"x","serverUrl":"https://example.com"}'},home}),/stdio 서버만/);
  assert.throws(()=>serverCommand({env:{HFGS_ASSET_MCP:'nope'},home}),/JSON/);
- fs.rmSync(home,{recursive:true,force:true});
+
+ // parseJsonc·parseCodexMcpToml 직접 검사
+ assert.deepEqual(parseJsonc('{"url":"https://a.b//c", /* comment */ "k": 1,}'),{url:'https://a.b//c',k:1});
+ assert.equal(parseCodexMcpToml('[mcp_servers.asset_pipeline]\nenabled = false\ncommand = "x"\n').asset_pipeline.disabled,true);
 });
 
 test('McpClient: initialize 뒤 도구를 부르고 structuredContent를 받으며 isError는 예외로',async t=>{

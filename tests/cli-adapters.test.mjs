@@ -45,8 +45,12 @@ test('agy: 모델 기본값은 gemini-4-argon-high, 강도는 모델 ID 접미�
  assert.deepEqual(agy.selectModel(),{model:'gemini-4-argon-high',effort_flag:null});
  assert.deepEqual(agy.selectModel({model:'gemini-4-argon-low'}),{model:'gemini-4-argon-low',effort_flag:null});
  assert.deepEqual(agy.selectModel({model:'gemini-4-argon',reasoning_effort:'medium'}),{model:'gemini-4-argon-medium',effort_flag:null});
+ assert.deepEqual(agy.selectModel({model:'gemini-4-neon-xhigh'}),{model:'gemini-4-neon-xhigh',effort_flag:null});
+ assert.deepEqual(agy.selectModel({model:'gemini-4-neon',reasoning_effort:'xhigh'}),{model:'gemini-4-neon-xhigh',effort_flag:null});
+ assert.deepEqual(agy.selectModel({model:'gemini-4-hydrogen',reasoning_effort:'xhigh'}),{model:'gemini-4-hydrogen-xhigh',effort_flag:null});
  assert.deepEqual(agy.selectModel({model:'claude-opus-5-5',reasoning_effort:'max'}),{model:'claude-opus-5-5',effort_flag:'max'});
  assert.throws(()=>agy.selectModel({model:'gemini-4-argon-low',reasoning_effort:'high'}),/고정/);
+ assert.throws(()=>agy.selectModel({model:'gemini-4-argon',reasoning_effort:'xhigh'}),/강도/);
  assert.throws(()=>agy.selectModel({model:'gemini-4-argon',reasoning_effort:'max'}),/강도/);
 });
 

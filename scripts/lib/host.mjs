@@ -45,3 +45,69 @@ export const REVIEWER_ORDER=['codex','claude','grok','agy'];
 export function pickReviewer(authorFamily,available=REVIEWER_ORDER){
  return REVIEWER_ORDER.find(r=>available.includes(r)&&familyOf(r)!==authorFamily)??null;
 }
+
+// 호스트별 리드 모델 하한(Claude Opus 이상·Codex Sol 이상·Gemini Neon 이상).
+// HFGS_HOST_MODEL이 명시돼 있을 때만 검사하며, 알 수 없는 최신 모델 이름은 막지 않는다.
+const HOST_CHOSEN=new Set(['auto','default']);
+const EFFORT_SUFFIX=/-(?:low|medium|high|xhigh|max)$/i;
+const EFFORT_PARENS=/\s*\((?:low|medium|high|xhigh|max)\)$/i;
+const LEAD_MODELS={
+ 'claude-fable-5-2':{family:'anthropic',lead:true,aliases:['Claude Fable 5.2']},
+ 'claude-opus-5-5':{family:'anthropic',lead:true,aliases:['Claude Opus 5.5']},
+ 'claude-sonnet-5-5':{family:'anthropic',lead:false,aliases:['Claude Sonnet 5.5']},
+ 'claude-haiku-5-5':{family:'anthropic',lead:false,aliases:['Claude Haiku 5.5']},
+ 'gpt-6.1-astra':{family:'openai',lead:true,aliases:['GPT 6.1 Astra']},
+ 'gpt-6.1-sol':{family:'openai',lead:true,aliases:['GPT 6.1 Sol']},
+ 'gpt-6.1-terra':{family:'openai',lead:false,aliases:['GPT 6.1 Terra']},
+ 'gpt-6-luna':{family:'openai',lead:false,aliases:['GPT 6 Luna']},
+ 'gemini-4-neon':{family:'google',lead:true,aliases:['Gemini 4 Neon']},
+ 'gemini-pro-orchestrator-neon':{family:'google',lead:true,aliases:['Orchestrator (Neon)']},
+ 'gemini-4-argon':{family:'google',lead:false,aliases:['Gemini 4 Argon']},
+ 'gemini-pro-orchestrator-g1-pro':{family:'google',lead:false,aliases:['Orchestrator (Argon)']},
+ 'gemini-4-hydrogen':{family:'google',lead:false,aliases:['Gemini 4 Hydrogen']},
+ 'gemini-3.8-flash':{family:'google',lead:false,aliases:['Gemini 3.8 Flash']},
+ 'gpt-oss-120b':{family:'unknown',lead:false,aliases:['GPT-OSS 120B']}
+};
+const LEAD_ELIGIBLE_PATTERNS=[
+ /^claude-(?:opus|fable)-/i,
+ /^gpt-[\d.]+-(?:sol|astra)(?:-|$)/i,
+ /^gemini-(?:\d+(?:\.\d+)*-neon|pro-orchestrator-neon)(?:-|$)/i
+];
+const LEAD_INELIGIBLE_PATTERNS=[
+ /^claude-(?:sonnet|haiku)-/i,
+ /^gpt-[\d.]+-(?:luna|terra|mini|nano)(?:-|$)/i,
+ /^gemini-(?:\d+(?:\.\d+)*-(?:argon|hydrogen|flash)|pro-orchestrator-g1-pro)(?:-|$)/i,
+ /^gpt-oss-/i
+];
+function matchLeadModel(candidate){
+ const low=candidate.toLowerCase();
+ return Object.keys(LEAD_MODELS).find(k=>k.toLowerCase()===low||LEAD_MODELS[k].aliases?.some(a=>a.toLowerCase()===low))??null;
+}
+function leadModelBase(reported){
+ if(typeof reported!=='string')return null;
+ const raw=reported.trim();
+ if(!raw||HOST_CHOSEN.has(raw.toLowerCase()))return null;
+ const exact=matchLeadModel(raw);
+ if(exact)return exact;
+ const stripped=raw.replace(EFFORT_SUFFIX,'').replace(EFFORT_PARENS,'').trim();
+ return stripped&&stripped!==raw?matchLeadModel(stripped):null;
+}
+export function leadEligibility(model){
+ if(typeof model!=='string'||!model.trim()||HOST_CHOSEN.has(model.trim().toLowerCase()))
+  return {eligible:true,known:false,base:null,family:null};
+ const trimmed=model.trim(),base=leadModelBase(trimmed);
+ if(base){
+  const entry=LEAD_MODELS[base];
+  return {eligible:entry.lead,known:true,base,family:entry.family==='unknown'?null:entry.family};
+ }
+ if(LEAD_ELIGIBLE_PATTERNS.some(re=>re.test(trimmed)))return {eligible:true,known:true,base:null,family:familyOf(null,trimmed)};
+ if(LEAD_INELIGIBLE_PATTERNS.some(re=>re.test(trimmed)))return {eligible:false,known:true,base:null,family:familyOf(null,trimmed)};
+ return {eligible:true,known:false,base:null,family:familyOf(null,trimmed)};
+}
+export function assertLeadModel(model){
+ if(typeof model!=='string'||!model.trim())return null;
+ const r=leadEligibility(model);
+ if(!r.eligible)
+  throw Error(`LEAD_MODEL_BELOW_MINIMUM: 리드 모델(${model.trim()})이 하한 미만임. 호스트별 최상위 모델(Claude Opus 이상·Codex Sol 이상·Gemini Neon 이상)만 리드가 될 수 있음`);
+ return r;
+}

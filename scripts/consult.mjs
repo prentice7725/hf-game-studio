@@ -76,7 +76,7 @@ const REVIEW_ORDERS=[
  'Your FINAL message must be only the JSON object matching result_schema. Write summary, issue and suggestion in Korean.'
 ];
 // agy는 프롬프트를 명령줄로만 받아(Windows 32,767자) diff를 작게 넣는다. 나머지는 파일을 직접 읽게 한다.
-const DIFF_MAX={codex:200000,grok:200000,agy:12000};
+const DIFF_MAX={codex:200000,claude:200000,grok:200000,agy:12000};
 
 export function reviewPrompt({criteria,base,diff,untracked,changed,checks,notes=[],reviewer}){
  const max=DIFF_MAX[reviewer]??50000,cut=diff.length>max;

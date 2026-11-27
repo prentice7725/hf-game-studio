@@ -19,7 +19,7 @@ import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {runChecks,passed,broken,checkEntry,displayCheck,quote} from './lib/checks.mjs';
-import {resolveHost,hostFamily,hostWarning,HOSTS} from './lib/host.mjs';
+import {resolveHost,hostFamily,hostWarning,HOSTS,HOST_MODEL_ENV,assertLeadModel} from './lib/host.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT=path.resolve(HERE,'..');
@@ -419,6 +419,7 @@ function writeState(state,env){
 // start: red-first와 작업 전 기록. 손대기 전 트리에서 수용 검사를 돌려 적어도 하나는 실패해야 한다.
 // 모두 통과하면 그 검사는 맞는 결과와 엉터리 결과를 가르지 못하므로 거절한다(baseline_green에 이유를 적으면 예외).
 export function start(input,{repo=process.cwd(),root=STUDIO_ROOT,warn=()=>{},restart=false,env=process.env,checks=runChecks,git=gitOut,host=resolveHost({env}).host}={}){
+ assertLeadModel(env[HOST_MODEL_ENV]);
  const p=plan(input,{repo,root,warn,host});
  const old=readState(p.task_id,env);
  if(old?.held&&!restart)fail(`보류한 작업(${old.held.reason}, ${old.held.at}): 다시 하려면 --restart`);

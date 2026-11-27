@@ -7,9 +7,9 @@
 | 일 | 맡는 쪽 |
 |---|---|
 | 기획, 코드, 수치, 검수 | 리드(지금 쓰는 도구의 모델) |
-| 시나리오, 대사 | Gemini (Argon) |
+| 시나리오, 대사 | Gemini (Argon, Google 계열 리드면 직접 작성) |
 | 이미지, 효과음 | [asset-pipeline](https://github.com/prentice7725/asset-pipeline) (ComfyUI 등) |
-| 코드 리뷰 | 다른 회사 모델 (기본 Codex) |
+| 코드 리뷰 | 다른 회사 모델 (기본 Codex, Codex 리드면 Claude) |
 
 다른 AI는 파일을 고치지 못하고 결과만 돌려줍니다. 그림과 소리는 사람이 보고 들어야 채택됩니다.
 
@@ -36,7 +36,10 @@ git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf
 node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 ```
 
-설계 문서 뼈대(`design/`), 검사 도구(`tools/hfgs/`), 보조 스킬(`.claude/skills/gs-*`)이 생깁니다. 있는 파일은 덮어쓰지 않습니다.
+설계 문서 뼈대(`design/`), 검사 도구(`tools/hfgs/`), 보조 스킬(기본 `.claude/skills/gs-*`, `--host`에 따라 달라짐)이 생깁니다. 있는 파일은 덮어쓰지 않습니다.
+
+- 웹 프로토타입(Phaser 4)도 깔려면 `--phaser`
+- Godot 4.7 본편도 깔려면 `--godot`
 
 ### Claude Code가 아닌 도구에서
 
@@ -48,10 +51,7 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 | Antigravity | `~/.gemini/config/skills/hf-game-studio` | `HFGS_HOST=agy`, `HFGS_HOST_MODEL=<모델 ID>` | `setup.mjs <게임 저장소> --host=agy` |
 | Gemini CLI | `~/.gemini/skills/hf-game-studio` | `HFGS_HOST=gemini` | `setup.mjs <게임 저장소> --host=gemini` |
 
-리드에 따라 리뷰어와 글 담당이 달라집니다. Codex가 리드면 Claude가 리뷰하고, Antigravity나 Gemini CLI가 리드면 글을 리드가 직접 씁니다. 자세한 것은 `SKILL.md`의 "호스트"에 있습니다. 실제 세션으로 돌려 본 것은 Claude Code 리드뿐입니다.
-
-- 웹 프로토타입(Phaser 4)도 깔려면 `--phaser`
-- Godot 4.7 본편도 깔려면 `--godot`
+리드에 따라 리뷰어와 글 담당이 달라집니다. Codex가 리드면 Claude가 리뷰하고, Antigravity나 Gemini CLI가 리드면 글을 리드가 직접 씁니다. `HFGS_HOST_MODEL`을 지정하면 호스트별 최상위 모델(Claude Opus·Codex Sol·Gemini Neon 이상) 미만은 작업 시작을 거절합니다. 자세한 것은 [SKILL.md](SKILL.md)의 "호스트"에 있습니다. 실제 세션으로 돌려 본 것은 Claude Code 리드뿐입니다.
 
 ## 쓰는 법
 
@@ -73,7 +73,7 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 |---|---|
 | `/gs-inspect` | 설계 문서와 코드를 대조해 어긋난 곳과 다음에 확인할 질문을 냄 |
 | `/gs-research` | 비슷한 게임이 그 문제를 어떻게 풀었는지 출처와 함께 조사 |
-| `/gs-experiment` | 질문 하나를 실험 카드로: 가설, 틀렸다고 볼 조건, 측정을 만들기 전에 적음 |
+| `/gs-experiment` | 질문 하나를 실험 카드로 만들고, 가설·틀렸다고 볼 조건·측정을 구현 전에 적음 |
 
 실험은 싼 것부터 합니다. 시뮬레이션으로 답이 나오면 화면을 만들지 않습니다.
 
@@ -83,9 +83,9 @@ node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <게임 저장소>
 
 ## 지켜지는 규칙
 
-- **검사는 먼저 실패해야 합니다.** 손대기 전에 이미 통과하는 검사는 아무것도 확인하지 못하므로 받지 않습니다.
-- **검사 기준은 못 고칩니다.** 스키마, 애셋 규격, 용어집을 작업 도중 바꾸면 실패합니다.
-- **정한 범위 밖 파일을 고치면 실패합니다.**
+- **검사는 먼저 실패해야 합니다.** 손대기 전에 이미 통과하는 검사는 아무것도 확인하지 못하므로 `task.mjs start`가 거절합니다.
+- **검사 기준은 못 고칩니다.** 스키마, 애셋 규격, 용어집을 작업 도중 바꾸면 `task.mjs verify`가 실패합니다.
+- **정한 범위 밖 파일을 고치면 `task.mjs verify`가 실패합니다.**
 - **리뷰어는 작성자의 설명을 받지 않습니다.** 바뀐 코드와 검사 결과만 보고 판정합니다.
 - **실험의 문턱은 만들기 전에 적고, 결과를 보고 바꾸지 않습니다.**
 
