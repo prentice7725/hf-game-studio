@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 이미지·효과음을 asset-pipeline MCP 서버로 만든다(v2 5단계). Claude는 그림을 그리거나 소리를 합성할 수 없으므로
+// 이미지·효과음을 asset-pipeline MCP 서버로 만든다(v2 5단계). 리드는 그림을 그리거나 소리를 합성하지 않고
 // 이 스크립트가 MCP 서버를 stdio로 직접 띄워 asset_build_brief → asset_route → asset_generate → asset_inspect_run을
 // 한 프로세스 수명 안에서 돈다(서버가 죽으면 STARTING인 run의 자식 프로세스를 더 추적할 수 없다).
 // 프롬프트는 작업 파일이 아니라 애셋 매니페스트 항목(prompt, negative_prompt)에서 읽는다. 매니페스트는 검사 기준 파일이라
@@ -12,8 +12,9 @@
 //   node scripts/assets.mjs generate TASK.json [--repo DIR] [--candidates N] [--seed S] [--interval SEC] [--timeout MIN] [--json]
 //   node scripts/assets.mjs pick TASK.json <N> --approved [--from FILE] [--repo DIR]
 //   node scripts/assets.mjs status TASK.json
-// MCP 서버는 HFGS_ASSET_MCP(JSON {"command":..,"args":[..],"env":{..}})가 있으면 그것을, 없으면 ~/.claude.json의
-// mcpServers.asset_pipeline(또는 asset-pipeline)을 쓴다. 종료 코드: 성공 0, 생성 실패·차단 1, 사용법·환경 오류 2.
+// MCP 서버는 HFGS_ASSET_MCP(JSON {"command":..,"args":[..],"env":{..}})가 있으면 그것을, 없으면 현재 호스트 우선으로
+// Antigravity·Gemini(~/.gemini/config/mcp_config.json 및 활성 플러그인, ~/.gemini/settings.json)·Claude(~/.claude.json)·Codex(~/.codex/config.toml)에서 찾는다.
+// 종료 코드: 성공 0, 생성 실패·차단 1, 사용법·환경 오류 2.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +22,7 @@ import readline from 'node:readline';
 import {spawn as spawnChild} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {plan,loadKinds,homeDir} from './task.mjs';
+import {resolveHost,normalizeHost} from './lib/host.mjs';
 import {checkAsset} from '../tools/check-assets.mjs';
 
 function fail(m,usage=true){throw Object.assign(Error(m),{usage});}
@@ -28,22 +30,241 @@ const str=v=>typeof v==='string'&&v.trim().length>0;
 export const PENDING=['STARTING','RUNNING'];
 const SERVER_KEYS=['asset_pipeline','asset-pipeline','assetpipe'];
 
-// MCP 서버 명령. 스크립트가 서버를 직접 띄우므로 Claude Code에 등록된 것과 같은 명령을 읽는다.
-export function serverCommand({env=process.env,home=os.homedir()}={}){
+// Antigravity의 plugin.json은 JSONC(주석·후행 쉼표)를 허용한다. 문자열 안의 "//"나 쉼표는 건드리지 않는다.
+export function parseJsonc(text){
+ const src=String(text??'').replace(/^\uFEFF/,'');
+ let noComments='',inString=false;
+ for(let i=0;i<src.length;i++){
+  const c=src[i],n=src[i+1];
+  if(inString){
+   noComments+=c;
+   if(c==='\\'){if(i+1<src.length)noComments+=src[++i];}
+   else if(c==='"')inString=false;
+   continue;
+  }
+  if(c==='"'){inString=true;noComments+=c;continue;}
+  if(c==='/'&&n==='/'){while(i<src.length&&src[i]!=='\n')i++;if(i<src.length)noComments+='\n';continue;}
+  if(c==='/'&&n==='*'){i+=2;while(i<src.length&&!(src[i]==='*'&&src[i+1]==='/'))i++;i++;continue;}
+  noComments+=c;
+ }
+ let cleaned='',str2=false;
+ for(let i=0;i<noComments.length;i++){
+  const c=noComments[i];
+  if(str2){
+   cleaned+=c;
+   if(c==='\\'){if(i+1<noComments.length)cleaned+=noComments[++i];}
+   else if(c==='"')str2=false;
+   continue;
+  }
+  if(c==='"'){str2=true;cleaned+=c;continue;}
+  if(c===','){
+   let j=i+1;
+   while(j<noComments.length&&/\s/.test(noComments[j]))j++;
+   if(noComments[j]==='}'||noComments[j]===']')continue;
+  }
+  cleaned+=c;
+ }
+ return JSON.parse(cleaned);
+}
+const readJsonc=file=>{try{return parseJsonc(fs.readFileSync(file,'utf8'));}catch{return null;}};
+const pickServer=file=>{
+ const servers=readJsonc(file)?.mcpServers??{};
+ const key=SERVER_KEYS.find(k=>servers[k]&&servers[k].disabled!==true);
+ return key?{entry:servers[key],source:`${file} mcpServers.${key}`}:null;
+};
+
+// Codex config.toml에서 [mcp_servers.*] 및 [mcp_servers.*.env] 테이블만 읽는다.
+export function parseCodexMcpToml(text){
+ const src=String(text??'').replace(/^\uFEFF/,''),servers={};
+ const skipInline=(s,i)=>{while(i<s.length&&(s[i]===' '||s[i]==='\t'))i++;return i;};
+ const skipAll=(s,i)=>{
+  while(i<s.length){
+   const c=s[i];
+   if(c===' '||c==='\t'||c==='\r'||c==='\n'){i++;continue;}
+   if(c==='#'){while(i<s.length&&s[i]!=='\n')i++;continue;}
+   break;
+  }
+  return i;
+ };
+ const skipLine=(s,i)=>{while(i<s.length&&s[i]!=='\n')i++;return i<s.length?i+1:i;};
+ const readStr=(s,i)=>{
+  const q=s[i++];
+  let out='';
+  if(q==="'"){
+   while(i<s.length&&s[i]!=="'"&&s[i]!=='\n')out+=s[i++];
+   if(s[i]==="'")i++;
+   return {value:out,next:i};
+  }
+  const ESC={b:'\b',t:'\t',n:'\n',f:'\f',r:'\r','"':'"','\\':'\\'};
+  while(i<s.length&&s[i]!=='"'){
+   if(s[i]==='\\'&&i+1<s.length){
+    const e=s[++i];
+    if(ESC[e]!==undefined){out+=ESC[e];i++;}
+    else if(e==='u'&&/^[0-9a-fA-F]{4}$/.test(s.slice(i+1,i+5))){out+=String.fromCodePoint(parseInt(s.slice(i+1,i+5),16));i+=5;}
+    else if(e==='U'&&/^[0-9a-fA-F]{8}$/.test(s.slice(i+1,i+9))){out+=String.fromCodePoint(parseInt(s.slice(i+1,i+9),16));i+=9;}
+    else{out+=e;i++;}
+    continue;
+   }
+   out+=s[i++];
+  }
+  if(s[i]==='"')i++;
+  return {value:out,next:i};
+ };
+ const readKeyParts=(s,i)=>{
+  const parts=[];
+  for(;;){
+   i=skipInline(s,i);
+   if(s[i]==='"'||s[i]==="'"){const r=readStr(s,i);parts.push(r.value);i=r.next;}
+   else{
+    const start=i;
+    while(i<s.length&&/[A-Za-z0-9_-]/.test(s[i]))i++;
+    if(i===start)break;
+    parts.push(s.slice(start,i));
+   }
+   i=skipInline(s,i);
+   if(s[i]==='.')i++;else break;
+  }
+  return {parts,next:i};
+ };
+ const readVal=(s,i)=>{
+  i=skipInline(s,i);
+  if(s[i]==='"'||s[i]==="'")return readStr(s,i);
+  if(s[i]==='['){
+   const arr=[];i++;
+   for(;;){
+    i=skipAll(s,i);
+    if(i>=s.length||s[i]===']')return {value:arr,next:i<s.length?i+1:i};
+    const item=readVal(s,i);
+    arr.push(item.value);
+    i=skipAll(s,item.next);
+    if(s[i]===',')i++;
+    else if(s[i]===']')return {value:arr,next:i+1};
+    else break;
+   }
+   return {value:arr,next:i};
+  }
+  if(s[i]==='{'){
+   const obj={};i++;
+   for(;;){
+    i=skipAll(s,i);
+    if(i>=s.length||s[i]==='}')return {value:obj,next:i<s.length?i+1:i};
+    const k=readKeyParts(s,i);
+    i=skipInline(s,k.next);
+    if(!k.parts.length||s[i]!=='=')break;
+    const v=readVal(s,i+1);
+    obj[k.parts.join('.')]=String(v.value);
+    i=skipAll(s,v.next);
+    if(s[i]===',')i++;
+    else if(s[i]==='}')return {value:obj,next:i+1};
+    else break;
+   }
+   return {value:obj,next:i};
+  }
+  const start=i;
+  while(i<s.length&&!/[\s,\[\]{}#]/.test(s[i]))i++;
+  const raw=s.slice(start,i);
+  if(raw==='true')return {value:true,next:i};
+  if(raw==='false')return {value:false,next:i};
+  return {value:raw,next:i};
+ };
+
+ let cur=null,i=0;
+ while(i<src.length){
+  i=skipAll(src,i);
+  if(i>=src.length)break;
+  if(src[i]==='['){
+   if(src[i+1]==='['){cur=null;i=skipLine(src,i);continue;}
+   const {parts,next}=readKeyParts(src,i+1);
+   i=skipInline(src,next);
+   if(src[i]===']')i=skipLine(src,i+1);else{cur=null;i=skipLine(src,i);continue;}
+   if(parts[0]==='mcp_servers'&&parts.length===2){
+    cur={name:parts[1],sub:null};
+    servers[cur.name]??={env:{}};
+   }else if(parts[0]==='mcp_servers'&&parts.length===3&&parts[2]==='env'){
+    cur={name:parts[1],sub:'env'};
+    servers[cur.name]??={env:{}};
+   }else cur=null;
+   continue;
+  }
+  const {parts,next}=readKeyParts(src,i);
+  i=skipInline(src,next);
+  if(!parts.length||src[i]!=='='){i=skipLine(src,i);continue;}
+  const {value,next:after}=readVal(src,i+1);
+  i=after;
+  if(!cur)continue;
+  const entry=servers[cur.name];
+  if(cur.sub==='env'&&parts.length===1){entry.env[parts[0]]=String(value);continue;}
+  if(cur.sub!==null)continue;
+  if(parts.length===2&&parts[0]==='env'){entry.env[parts[1]]=String(value);continue;}
+  if(parts.length!==1)continue;
+  const k=parts[0];
+  if(k==='enabled')entry.disabled=!value;
+  else if(k==='disabled')entry.disabled=Boolean(value);
+  else if(k==='env'&&value&&typeof value==='object'&&!Array.isArray(value))entry.env={...entry.env,...value};
+  else if(['command','args','url','serverUrl','type'].includes(k))entry[k]=value;
+ }
+ return servers;
+}
+
+function findAntigravityServer(home){
+ const configDir=path.join(home,'.gemini','config');
+ const hit=pickServer(path.join(configDir,'mcp_config.json'));
+ if(hit)return hit;
+ const pluginsDir=path.join(configDir,'plugins');
+ const pluginStates=readJsonc(path.join(configDir,'config.json'))?.plugins??{};
+ let dirs=[];
+ try{dirs=fs.readdirSync(pluginsDir).sort();}catch{}
+ for(const dir of dirs){
+  const pluginPath=path.join(pluginsDir,dir);
+  try{if(!fs.statSync(pluginPath).isDirectory())continue;}catch{continue;}
+  const manifest=readJsonc(path.join(pluginPath,'plugin.json'));
+  if(!manifest||typeof manifest!=='object'||Array.isArray(manifest))continue;
+  const override=pluginStates[dir]?.enabled;
+  const enabled=typeof override==='boolean'?override:manifest.disabled!==true;
+  if(!enabled)continue;
+  const pluginHit=pickServer(path.join(pluginPath,'mcp_config.json'));
+  if(pluginHit)return pluginHit;
+ }
+ return pickServer(path.join(home,'.gemini','settings.json'));
+}
+
+function findClaudeServer(home){
+ return pickServer(path.join(home,'.claude.json'));
+}
+
+function findCodexServer(home,env){
+ const file=path.join(env.CODEX_HOME||path.join(home,'.codex'),'config.toml');
+ let text;
+ try{text=fs.readFileSync(file,'utf8');}catch{return null;}
+ const servers=parseCodexMcpToml(text);
+ const key=SERVER_KEYS.find(k=>servers[k]&&servers[k].disabled!==true);
+ return key?{entry:servers[key],source:`${file} mcp_servers.${key}`}:null;
+}
+
+// MCP 서버 명령. 스크립트가 서버를 직접 띄우므로 현재 호스트를 우선해 등록된 설정을 읽는다.
+export function serverCommand({env=process.env,home=os.homedir(),host}={}){
  let found,source;
  if(env.HFGS_ASSET_MCP){
   try{found=JSON.parse(env.HFGS_ASSET_MCP);}catch{fail('HFGS_ASSET_MCP는 {"command": "...", "args": [...]} JSON');}
   source='HFGS_ASSET_MCP';
  }else{
-  const file=path.join(home,'.claude.json');
-  let servers={};
-  try{servers=JSON.parse(fs.readFileSync(file,'utf8')).mcpServers??{};}catch{}
-  const key=SERVER_KEYS.find(k=>servers[k]);
-  if(!key)fail(`asset-pipeline MCP 서버를 찾지 못함: ${file}의 mcpServers에 ${SERVER_KEYS[0]}가 없음. `
-   +'claude mcp add asset_pipeline --scope user -- <assetpipe-mcp 실행 파일> --config <adapter.yaml> 으로 등록하거나 HFGS_ASSET_MCP에 명령을 JSON으로 적을 것');
-  found=servers[key];source=`${file} mcpServers.${key}`;
+  const resolved=host!==undefined&&host!==null?{host:normalizeHost(host),source:'flag'}:resolveHost({env});
+  const mapped=resolved.source==='default'?null:(resolved.host==='gemini'?'agy':resolved.host);
+  const order=mapped?[mapped,...['agy','claude','codex'].filter(h=>h!==mapped)]:['agy','claude','codex'];
+  const finders={
+   agy:()=>findAntigravityServer(home),
+   claude:()=>findClaudeServer(home),
+   codex:()=>findCodexServer(home,env)
+  };
+  for(const h of order){
+   const hit=finders[h]();
+   if(hit){found=hit.entry;source=hit.source;break;}
+  }
+  if(!found)fail(`asset-pipeline MCP 서버를 찾지 못함: ~/.gemini/config/mcp_config.json(및 활성 플러그인), ~/.claude.json, ~/.codex/config.toml에 ${SERVER_KEYS[0]}가 없음. `
+   +'사용 중인 호스트(Antigravity·Claude Code·Codex)에 asset_pipeline MCP를 등록하거나 HFGS_ASSET_MCP에 명령을 JSON으로 적을 것');
  }
- if(found.type!==undefined&&found.type!=='stdio')fail(`${source}: stdio 서버만 띄울 수 있음(type: ${found.type})`);
+ if((found.type!==undefined&&found.type!=='stdio')||found.url!==undefined||found.serverUrl!==undefined)
+  fail(`${source}: stdio 서버만 띄울 수 있음(type: ${found.type??'http'})`);
  if(!str(found.command))fail(`${source}: command가 없음`);
  const args=found.args??[];
  if(!Array.isArray(args)||!args.every(str))fail(`${source}: args는 문자열 배열`);

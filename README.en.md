@@ -7,9 +7,9 @@
 | Work | Done by |
 |---|---|
 | Design, code, numbers, checking | The lead (your tool's model) |
-| Story, dialogue | Gemini (Argon) |
+| Story, dialogue | Gemini (Argon; written by the lead when on a Google-family lead) |
 | Images, sound effects | [asset-pipeline](https://github.com/prentice7725/asset-pipeline) (ComfyUI and others) |
-| Code review | A model from another vendor (Codex by default) |
+| Code review | A model from another vendor (Codex by default; Claude under a Codex lead) |
 
 The other models can't edit files. They only return results. Images and sounds are kept only after a person has seen or heard them.
 
@@ -24,6 +24,8 @@ When you hand a game to an AI, two things often go wrong.
 
 You need Node.js 24 or later, Git and one tool to act as the lead (Claude Code, Codex, Antigravity or Gemini CLI). Install the other models only if you use them (`codex`, `claude`, `agy`, asset-pipeline).
 
+For writing, you can call Vertex AI directly without `agy` (`--writer vertex`). Point `GOOGLE_APPLICATION_CREDENTIALS` to your service account key JSON; see "글쓰기를 Vertex AI로 직접" in [SKILL.md](SKILL.md) (Korean).
+
 ```bash
 git clone https://github.com/prentice7725/hf-game-studio.git ~/.claude/skills/hf-game-studio
 ```
@@ -34,7 +36,10 @@ Set up a game repository:
 node ~/.claude/skills/hf-game-studio/scripts/setup.mjs <game repo>
 ```
 
-This adds design document templates (`design/`), check tools (`tools/hfgs/`) and helper skills (`.claude/skills/gs-*`). Existing files are not overwritten.
+This adds design document templates (`design/`), check tools (`tools/hfgs/`) and helper skills (`.claude/skills/gs-*` by default, depending on `--host`). Existing files are not overwritten.
+
+- Add `--phaser` for a web prototype (Phaser 4)
+- Add `--godot` for the main game in Godot 4.7
 
 ### With a tool other than Claude Code
 
@@ -46,10 +51,7 @@ Clone the skill into that tool's skill folder and set `HFGS_HOST` so the scripts
 | Antigravity | `~/.gemini/config/skills/hf-game-studio` | `HFGS_HOST=agy`, `HFGS_HOST_MODEL=<model ID>` | `setup.mjs <game repo> --host=agy` |
 | Gemini CLI | `~/.gemini/skills/hf-game-studio` | `HFGS_HOST=gemini` | `setup.mjs <game repo> --host=gemini` |
 
-The reviewer and the writer depend on the lead. With Codex as the lead, Claude reviews. With Antigravity or Gemini CLI as the lead, the lead writes the text itself. See "호스트" in `SKILL.md` (Korean). Only the Claude Code lead has been run in real sessions.
-
-- Add `--phaser` for a web prototype (Phaser 4)
-- Add `--godot` for the main game in Godot 4.7
+The reviewer and the writer depend on the lead. With Codex as the lead, Claude reviews. With Antigravity or Gemini CLI as the lead, the lead writes the text itself. When `HFGS_HOST_MODEL` is set, `task.mjs start` rejects models below the host's frontier tier (Claude Opus, Codex Sol, or Gemini Neon). See "호스트" in [SKILL.md](SKILL.md) (Korean). Only the Claude Code lead has been run in real sessions.
 
 ## How to use
 
@@ -79,11 +81,11 @@ Experiments start with the cheapest step. If a simulation answers the question, 
 simulation → web prototype → Godot game
 ```
 
-## Rules it enforces
+## Enforced rules
 
-- **Checks must fail first.** A check that already passes before any change proves nothing, so it is rejected.
-- **The check criteria can't be changed.** Editing schemas, asset specs or the glossary during a task makes it fail.
-- **Editing files outside the declared scope makes the task fail.**
+- **Checks must fail first.** A check that already passes before any change proves nothing, so `task.mjs start` rejects it.
+- **The check criteria can't be changed.** Editing schemas, asset specs or the glossary during a task fails `task.mjs verify`.
+- **Editing files outside the declared scope fails `task.mjs verify`.**
 - **Reviewers don't get the author's explanation.** They judge from the changed code and the check results only.
 - **An experiment's threshold is written before building and is not changed after seeing the result.**
 

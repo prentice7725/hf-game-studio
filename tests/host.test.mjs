@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {resolveHost,normalizeHost,hostWarning,hostFamily,familyOf,pickReviewer,HOSTS} from '../scripts/lib/host.mjs';
+import {resolveHost,normalizeHost,hostWarning,hostFamily,familyOf,pickReviewer,HOSTS,leadEligibility,assertLeadModel} from '../scripts/lib/host.mjs';
 import * as claude from '../scripts/lib/adapters/claude.mjs';
 import {ADAPTERS} from '../scripts/lib/adapters/index.mjs';
 import {plan as taskPlan,start,verify} from '../scripts/task.mjs';
@@ -172,4 +172,20 @@ test('설치: 리드 스킬은 호스트의 스킬 폴더에 깔고, 나머지 �
  install(dir,{host:'codex',log:()=>{}});
  assert.ok(fs.existsSync(path.join(dir,'.codex','skills','gs-inspect','SKILL.md')));
  assert.equal(fs.existsSync(path.join(dir,'.claude')),false);
+});
+
+test('리드 모델 하한: Opus·Sol·Neon 이상만 통과하고 하한 미만은 start에서 차단',()=>{
+ for(const ok of ['claude-opus-5-5','claude-fable-5-2','gpt-6.1-sol','gpt-6.1-astra','gemini-4-neon-xhigh','Orchestrator (Neon)','future-model-9']){
+  assert.equal(leadEligibility(ok).eligible,true,ok);
+  assert.doesNotThrow(()=>assertLeadModel(ok));
+ }
+ for(const bad of ['claude-sonnet-5-5','claude-haiku-5-5','gpt-6.1-terra','gpt-6-luna','gemini-4-argon-high','Orchestrator (Argon)','gemini-4-hydrogen','gemini-3.8-flash','gpt-oss-120b']){
+  assert.equal(leadEligibility(bad).eligible,false,bad);
+  assert.throws(()=>assertLeadModel(bad),/LEAD_MODEL_BELOW_MINIMUM/);
+ }
+ const dir=gameRepo(),env={HFGS_HOME:tmp(),HFGS_HOST_MODEL:'gemini-4-argon-high'};
+ const task={task_id:'M1',kind:'code',objective:'a.txt를 고친다',scope:{paths:['a.txt']},success_criteria:['AC1: a.txt가 two다'],context_docs:[],
+  acceptance_commands:[`node -e "process.exit(require('fs').readFileSync('a.txt','utf8').trim()==='two'?0:1)"`]};
+ assert.throws(()=>start(task,{repo:dir,env,host:'agy'}),/LEAD_MODEL_BELOW_MINIMUM/);
+ assert.doesNotThrow(()=>start(task,{repo:dir,env:{HFGS_HOME:tmp(),HFGS_HOST_MODEL:'gemini-4-neon-xhigh'},host:'agy'}));
 });
